@@ -1,34 +1,75 @@
 # Playwright Utilities
 
-A Playwright test automation framework built with TypeScript following the **Page Object Model (POM)** pattern with **Allure reporting**.
+A comprehensive Playwright test automation framework built with TypeScript following the **Page Object Model (POM)** pattern. Includes advanced utilities for screenshot comparison, PDF validation, network mocking, session management, accessibility checks, and BrowserStack real-device integration.
+
+## Table of Contents
+
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+- [Environment Configuration](#environment-configuration)
+- [Page Object Model](#page-object-model)
+- [Fluent Assertion Library](#fluent-assertion-library)
+- [Screenshot Comparator](#screenshot-comparator)
+- [Multi-Baseline Snapshot Manager](#multi-baseline-snapshot-manager)
+- [PDF Comparator](#pdf-comparator)
+- [Network Mocker](#network-mocker)
+- [Session Manager](#session-manager)
+- [DateTime Helpers](#datetime-helpers)
+- [Table/Grid Helpers](#tablegrid-helpers)
+- [Wait Helpers](#wait-helpers)
+- [Auth Helpers](#auth-helpers)
+- [Accessibility Helpers](#accessibility-helpers)
+- [Visual Helpers](#visual-helpers)
+- [BrowserStack Integration](#browserstack-integration)
+- [Reporting](#reporting)
 
 ## Project Structure
 
 ```
-├── env/                 # Environment configuration files
-│   ├── .env.dev         # Development environment variables
-│   └── .env.qa          # QA environment variables
+├── env/                          # Environment configuration
+│   ├── .env.dev                  # Development environment
+│   └── .env.qa                   # QA environment
 ├── src/
-│   ├── main/            # Framework source (pages, fixtures, utils)
-│   │   ├── pages/       # Page Object classes
+│   ├── main/                     # Framework source
+│   │   ├── assertions/           # Fluent chainable assertion library
+│   │   │   ├── fluent-expect.ts
+│   │   │   └── index.ts
+│   │   ├── data/                 # Test data constants
+│   │   │   ├── test-data.ts
+│   │   │   └── index.ts
+│   │   ├── fixtures/             # Custom Playwright fixtures
+│   │   │   ├── page-fixtures.ts
+│   │   │   └── index.ts
+│   │   ├── pages/                # Page Object classes
 │   │   │   ├── base.page.ts
 │   │   │   ├── home.page.ts
 │   │   │   └── index.ts
-│   │   ├── fixtures/    # Custom Playwright fixtures
-│   │   │   ├── page-fixtures.ts
-│   │   │   └── index.ts
-│   │   ├── utils/       # Helper utilities
-│   │   │   ├── test-helpers.ts
-│   │   │   └── index.ts
-│   │   └── data/        # Test data constants
-│   │       ├── test-data.ts
+│   │   └── utils/                # Utility libraries
+│   │       ├── accessibility-helpers.ts
+│   │       ├── auth-helpers.ts
+│   │       ├── datetime-helpers.ts
+│   │       ├── network-mocker.ts
+│   │       ├── pdf-comparator.ts
+│   │       ├── screenshot-comparator.ts
+│   │       ├── session-manager.ts
+│   │       ├── snapshot-manager.ts
+│   │       ├── table-helpers.ts
+│   │       ├── test-helpers.ts
+│   │       ├── visual-helpers.ts
+│   │       ├── wait-helpers.ts
 │   │       └── index.ts
-│   └── tests/           # Test spec files
-│       └── home.spec.ts
-├── playwright.config.ts # Playwright configuration
-├── tsconfig.json        # TypeScript configuration
-├── .eslintrc.json       # ESLint configuration
-└── .prettierrc          # Prettier configuration
+│   └── tests/                    # Test spec files
+│       ├── home.spec.ts
+│       ├── fluent-assertions.spec.ts
+│       ├── screenshot-comparator.spec.ts
+│       ├── snapshot-manager.spec.ts
+│       ├── pdf-comparator.spec.ts
+│       └── network-mocker.spec.ts
+├── browserstack.config.ts        # BrowserStack real-device config
+├── playwright.config.ts          # Local Playwright config
+├── tsconfig.json
+├── .eslintrc.json
+└── .prettierrc
 ```
 
 ## Getting Started
@@ -37,7 +78,7 @@ A Playwright test automation framework built with TypeScript following the **Pag
 
 - Node.js >= 18
 - npm >= 9
-- Java Runtime (for Allure report generation)
+- Java Runtime (for Allure reports)
 
 ### Installation
 
@@ -52,101 +93,60 @@ npx playwright install
 # Run all tests (defaults to dev environment)
 npm test
 
-# Run tests against specific environment
+# Run against specific environment
 npm run test:dev
 npm run test:qa
 
-# Run tests in headed mode
+# Run in headed mode / UI mode / debug
 npm run test:headed
-
-# Run tests with UI mode
 npm run test:ui
-
-# Debug tests
 npm run test:debug
 
 # Run only Chromium
 npm run test:chromium
-```
 
-### Reports
-
-```bash
-# Open Playwright HTML report
-npm run report:html
-
-# Generate and open Allure report
-npm run report:allure
-
-# Generate Allure report only
-npm run report:allure:generate
-
-# Open existing Allure report
-npm run report:allure:open
+# Run on BrowserStack
+npx playwright test --config=browserstack.config.ts
 ```
 
 ### Linting & Formatting
 
 ```bash
-# Lint
-npm run lint
-npm run lint:fix
-
-# Format
-npm run format
-npm run format:check
+npm run lint          # Check for issues
+npm run lint:fix      # Auto-fix issues
+npm run format        # Format all files
+npm run format:check  # Check formatting
 ```
 
 ## Environment Configuration
 
-Environment files live in the `env/` directory. Set the `ENV` variable to switch:
+Environment files live in `env/`. Switch with the `ENV` variable:
 
 ```bash
-# Uses env/.env.dev (default)
-npm run test:dev
-
-# Uses env/.env.qa
-npm run test:qa
-
-# Custom: ENV=staging npx playwright test
+npm run test:dev    # Uses env/.env.dev
+npm run test:qa     # Uses env/.env.qa
 ```
 
-Each `.env.<environment>` file should contain:
+Each file contains:
 
 ```env
-BASE_URL=https://your-app-url.com
+BASE_URL=https://your-app.com
 ENV=dev
+BROWSERSTACK_USERNAME=your_username
+BROWSERSTACK_ACCESS_KEY=your_key
 ```
 
-## Page Object Model (POM)
+## Page Object Model
 
-All page objects extend `BasePage` which provides common methods:
-
-- `navigate(path)` - Navigate to a URL
-- `waitForPageLoad()` - Wait for page load state
-- `click(locator)` - Click an element
-- `fill(locator, text)` - Fill an input
-- `getText(locator)` - Get element text
-- `isVisible(locator)` - Check visibility
-- `waitForElement(locator)` - Wait for element
-
-### Creating a New Page Object
+All page objects extend `BasePage` with shared methods:
 
 ```typescript
-import { type Locator, type Page } from '@playwright/test';
 import { BasePage } from './base.page';
 
 export class LoginPage extends BasePage {
-  readonly usernameInput: Locator;
-  readonly passwordInput: Locator;
-  readonly submitButton: Locator;
-
-  constructor(page: Page) {
-    super(page);
-    this.usernameInput = page.getByLabel('Username');
-    this.passwordInput = page.getByLabel('Password');
-    this.submitButton = page.getByRole('button', { name: 'Sign in' });
-  }
+  readonly usernameInput = this.page.getByLabel('Username');
+  readonly passwordInput = this.page.getByLabel('Password');
+  readonly submitButton = this.page.getByRole('button', { name: 'Sign in' });
 
   async login(username: string, password: string): Promise<void> {
     await this.fill(this.usernameInput, username);
@@ -156,27 +156,484 @@ export class LoginPage extends BasePage {
 }
 ```
 
-### Using Fixtures
+**BasePage methods:** `navigate`, `waitForPageLoad`, `click`, `fill`, `getText`, `isVisible`, `waitForElement`, `getTitle`, `getUrl`
 
-Register your page object in `src/main/fixtures/page-fixtures.ts`, then use it in tests:
+Register page objects in `src/main/fixtures/page-fixtures.ts` for automatic injection:
 
 ```typescript
-import { test, expect } from '../main/fixtures';
-
-test('example test', async ({ homePage }) => {
-  await homePage.goto();
-  expect(await homePage.isHeadingVisible()).toBeTruthy();
+test('login test', async ({ loginPage }) => {
+  await loginPage.login('admin', 'password');
 });
 ```
 
-## Allure Reporting
+## Fluent Assertion Library
 
-Allure results are generated automatically in `allure-results/` after each test run. To view:
+Chainable assertions that execute sequentially when awaited:
 
-```bash
-npm run report:allure
+```typescript
+import { expect$, fluentExpectPage } from '../main/fixtures';
+
+// Chain multiple locator assertions
+await expect$(locator)
+  .toBeVisible()
+  .toHaveText('Submit')
+  .toHaveCss('color', 'rgb(0, 0, 255)')
+  .toBeClickable()
+  .toHaveAccessibleName('Submit form');
+
+// Negation
+await expect$(locator).not.toBeVisible().toBeHidden();
+
+// Page-level assertions
+await fluentExpectPage(page)
+  .toHaveTitle(/Dashboard/)
+  .toHaveURL('/dashboard');
+
+// Custom assertion in the chain
+await expect$(locator)
+  .toBeVisible()
+  .satisfies(async (loc) => {
+    const box = await loc.boundingBox();
+    if (!box || box.width < 100) throw new Error('Too narrow');
+  });
 ```
 
-This generates the report in `allure-report/` and opens it in your browser.
+**All Playwright locator assertions supported:** `toBeAttached`, `toBeVisible`, `toBeHidden`, `toBeEnabled`, `toBeDisabled`, `toBeEditable`, `toBeFocused`, `toBeChecked`, `toBeEmpty`, `toBeInViewport`, `toBeClickable`, `toHaveText`, `toContainText`, `toHaveValue`, `toHaveValues`, `toHaveAttribute`, `toHaveCss`, `toHaveClass`, `toContainClass`, `toHaveId`, `toHaveJSProperty`, `toHaveAccessibleName`, `toHaveAccessibleDescription`, `toHaveRole`, `toHaveCount`, `toHaveScreenshot`, `toMatchAriaSnapshot`
 
-> **Note:** Allure CLI requires Java Runtime Environment (JRE) to be installed.
+## Screenshot Comparator
+
+Intelligent pixel-level comparison that classifies differences:
+
+```typescript
+import { ScreenshotComparator, DiffSeverity } from '../main/utils';
+
+const comparator = new ScreenshotComparator({
+  maxDiffPercentage: 0.5,
+  maxStructuralPixels: 50,
+  colorToleranceDelta: 25,
+  maxAlignmentShift: 3,
+  outputDir: 'test-results/diff-images',
+});
+
+const result = await comparator.compare(baselineBuffer, actualBuffer);
+
+console.log(result.summary);
+// ⚠️ MINOR: Small differences detected — likely alignment or rendering variance.
+//    Diff: 1.5% of pixels differ.
+//    Breakdown:
+//      • Anti-aliasing:   10691 px
+//      • Alignment shift: 16529 px
+//      • Color tolerance: 0 px
+//      • Structural:      0 px
+```
+
+**Classification categories:**
+
+| Category | Detection | Verdict |
+|----------|-----------|---------|
+| Anti-aliasing | Pixel on high-contrast edge, similar pixel in neighbor | Noise — ignore |
+| Alignment shift | Same pixel exists within 1-3px radius | Layout jitter — not a bug |
+| Color tolerance | Perceptual color delta below threshold | Rendering variance — ignore |
+| Structural | None of the above | Real bug |
+
+**Severity levels:** `NONE` → `NEGLIGIBLE` → `MINOR` → `MAJOR`
+
+## Multi-Baseline Snapshot Manager
+
+Store multiple valid baselines per test — passes if ANY match:
+
+```typescript
+import { SnapshotManager } from '../main/utils';
+
+const manager = new SnapshotManager();
+
+// Compares against all stored baselines
+const result = await manager.assertScreenshot(page, { name: 'homepage' });
+
+// Element-level
+const result = await manager.assertElementScreenshot(locator, { name: 'button' });
+
+// Add a new valid baseline variant
+manager.addBaseline('homepage', screenshotBuffer);
+
+// Update baselines
+// ENV: UPDATE_SNAPSHOTS=true npx playwright test
+await manager.assertScreenshot(page, { name: 'homepage', updateBaseline: true });
+```
+
+## PDF Comparator
+
+Download PDFs from embedded elements, compare with masking for dynamic content:
+
+```typescript
+import { PdfComparator, PdfMasks } from '../main/utils';
+
+const comparator = new PdfComparator({
+  masks: [PdfMasks.DATE_US, PdfMasks.TIME, PdfMasks.UUID, PdfMasks.CURRENCY],
+  regionMasks: [
+    { page: 1, startLine: 3, endLine: 5, description: 'Header timestamps' },
+    { page: 2, startLine: 8, startChar: 20, endChar: 45, description: 'Transaction ID' },
+  ],
+});
+
+// Click button → wait for PDF response → download → compare
+const result = await comparator.compareFromResponse(
+  page,
+  'button#generate-pdf',
+  'monthly-invoice',
+);
+
+// Download from embed element
+const result = await comparator.compareFromEmbed(page, 'embed#pdf-viewer', 'report');
+
+// Download from URL
+const result = await comparator.compareFromUrl(page, '/api/report.pdf', 'report');
+```
+
+**Pre-built masks:** `DATE_US`, `DATE_ISO`, `DATE_LONG`, `TIME`, `DATETIME_ISO`, `UUID`, `EMAIL`, `PHONE`, `CURRENCY`, `PAGE_NUMBER`, `REFERENCE_NUMBER`
+
+**Region masks:** Mask by page + line range + character range.
+
+## Network Mocker
+
+Full network interception, mocking, modification, and HAR replay:
+
+```typescript
+import { NetworkMocker } from '../main/utils';
+
+const mocker = new NetworkMocker(page, { recordAll: true });
+await mocker.start();
+
+// ─── Mock API (no real request) ──────────────────────────────
+mocker.mockGet('/api/users', { body: [{ id: 1, name: 'Alice' }] });
+mocker.mockPost('/api/login', { status: 200, body: { token: 'abc' } });
+
+// ─── Dynamic responses ──────────────────────────────────────
+mocker.mockPost('/api/auth', (request) => {
+  const body = JSON.parse(request.postData() || '{}');
+  return body.password === 'secret'
+    ? { status: 200, body: { token: 'jwt' } }
+    : { status: 401, body: { error: 'Unauthorized' } };
+});
+
+// ─── Modify real responses (intercept + patch) ───────────────
+mocker.mockAndModify('**/api/v1/fruits', async (route, response) => {
+  const json = await response.json();
+  json.push({ name: 'Loquat', id: 100 });
+  return { json };
+});
+
+// ─── Simple JSON patching ────────────────────────────────────
+mocker.patchJson('/api/user/profile', { name: 'Overridden', verified: true });
+
+// ─── Error simulation ────────────────────────────────────────
+mocker.mockError('/api/broken');
+mocker.mockTimeout('/api/hang', 10000);
+mocker.mockSlow('/api/slow', 2000, { body: { ok: true } });
+
+// ─── HAR record & replay ────────────────────────────────────
+await mocker.recordHAR('./hars/api.har', { url: '**/api/**' });
+await mocker.replayFromHAR('./hars/api.har', { url: '**/api/**' });
+
+// ─── WebSocket mocking ──────────────────────────────────────
+await mocker.mockWebSocket('wss://example.com/ws', (ws) => {
+  ws.onMessage((msg) => { if (msg === 'ping') ws.send('pong'); });
+});
+
+// ─── Request inspection ──────────────────────────────────────
+mocker.wasCalled('/api/users');           // true/false
+mocker.callCount('/api/users');           // number
+mocker.getRequests('/api/login');         // CapturedRequest[]
+mocker.getRequestBodies('/api/login');    // parsed bodies
+
+await mocker.stop();
+```
+
+## Session Manager
+
+Full session persistence with refresh token support — eliminates login per test:
+
+```typescript
+import { SessionManager } from '../main/utils';
+
+const session = new SessionManager({
+  tokenKey: 'access_token',
+  refreshTokenKey: 'refresh_token',
+  refreshEndpoint: '/api/auth/refresh',
+  sessionTTL: 25 * 60 * 1000,  // 25 min
+});
+
+// In global setup (runs once):
+await session.ensure(page, 'admin', {
+  url: '/login',
+  username: 'admin@company.com',
+  password: process.env.ADMIN_PASSWORD!,
+  successUrl: /dashboard/,
+});
+
+// In test beforeEach (no login needed):
+test.beforeEach(async ({ page }) => {
+  await session.restore(page, 'admin');
+  await page.goto('/dashboard'); // Already authenticated
+});
+```
+
+**Key features:**
+- Captures cookies + localStorage + **sessionStorage** (Playwright only does first two)
+- Auto-decodes JWT `exp` claim for expiry detection
+- Attempts token refresh before falling back to re-login
+- Configurable TTL with expiry buffer
+- Supports custom login flows (MFA, OAuth)
+
+## DateTime Helpers
+
+Clock control, date formatting, timezone simulation, and date picker interaction:
+
+```typescript
+import {
+  freezeClock, advanceClock, installClock, resumeClock,
+  formatDate, today, relativeDate, relativeTo,
+  fillDateInput, selectDateInPicker,
+  TIMEZONES,
+} from '../main/utils';
+
+// ─── Freeze time for deterministic tests ─────────────────────
+await freezeClock(page, '2025-06-15T10:30:00Z');
+
+// ─── Install controllable clock ──────────────────────────────
+await installClock(page, '2025-01-01T00:00:00Z');
+await advanceClock(page, 60_000); // advance 1 minute
+
+// ─── Date formatting for assertions ─────────────────────────
+formatDate(new Date(), 'MM/DD/YYYY');     // "06/15/2025"
+today('YYYY-MM-DD');                       // "2025-06-15"
+relativeDate(7, 'MM/DD/YYYY');            // 7 days from now
+relativeTo('2025-01-01', { months: 3 });  // "2025-04-01"
+
+// ─── Fill native date inputs ─────────────────────────────────
+await fillDateInput(page, '#start-date', '2025-03-15');
+await fillDateTimeInput(page, '#appointment', '2025-03-15T14:30');
+
+// ─── Navigate custom date pickers ────────────────────────────
+await selectDateInPicker(page, {
+  triggerSelector: '#date-field',
+  targetDate: '2025-03-15',
+  nextMonthSelector: 'button[aria-label="Next month"]',
+  prevMonthSelector: 'button[aria-label="Previous month"]',
+  daySelector: (day) => `button:has-text("${day}")`,
+  currentMonthSelector: '.calendar-header',
+});
+
+// ─── Timezone constants ──────────────────────────────────────
+// TIMEZONES.US_EASTERN, TIMEZONES.UK, TIMEZONES.JAPAN, etc.
+```
+
+## Table/Grid Helpers
+
+Read, interact with, and assert on HTML tables and data grids:
+
+```typescript
+import { TableHelper } from '../main/utils';
+
+const table = new TableHelper(page, { rootSelector: '#users-table' });
+
+// ─── Read data ───────────────────────────────────────────────
+const rows = await table.getAllRows();        // [{Name: 'Alice', Email: '...'}, ...]
+const headers = await table.getHeaders();     // ['Name', 'Email', 'Status']
+const emails = await table.getColumnValues('Email');
+const count = await table.getRowCount();
+
+// ─── Search & filter ─────────────────────────────────────────
+const row = await table.findRow('Email', 'alice@test.com');
+const activeRows = await table.findRows('Status', /Active/);
+const exists = await table.hasRow('Name', 'Bob');
+
+// ─── Sorting ─────────────────────────────────────────────────
+await table.clickHeader('Name');
+await table.expectColumnSorted('Name', 'asc');
+
+// ─── Assertions ──────────────────────────────────────────────
+await table.expectRowCount(10);
+await table.expectRowExists({ Name: 'Alice', Status: 'Active' });
+await table.expectRowNotExists({ Name: 'Deleted User' });
+await table.expectColumnContains('Status', 'Active');
+await table.expectCellText(0, 'Name', 'Alice');
+await table.expectEmpty();
+await table.expectNotEmpty();
+
+// ─── Row interactions ────────────────────────────────────────
+await table.clickRow(0);
+await table.clickRowByValue('Name', 'Alice');
+await table.clickActionInRow('Name', 'Alice', 'Actions', 'button:has-text("Edit")');
+
+// ─── Pagination ──────────────────────────────────────────────
+await table.nextPage();
+await table.prevPage();
+await table.goToPage(3);
+
+// ─── Selection ───────────────────────────────────────────────
+await table.selectRow(0);
+await table.selectAll();
+const selected = await table.getSelectedRowIndices();
+
+// ─── Inline editing ──────────────────────────────────────────
+await table.editCell(0, 'Name', 'New Name', {
+  activateBy: 'dblclick',
+  confirmBy: 'enter',
+});
+```
+
+**Works with:** Standard HTML tables, AG Grid, Material UI Table, Ant Design Table, and any grid using `role="grid"` / `role="row"` / `role="gridcell"`.
+
+## Wait Helpers
+
+Common wait patterns beyond Playwright's built-in auto-waiting:
+
+```typescript
+import {
+  waitForApiResponse, waitForNetworkIdle, waitForElementStable,
+  waitForCount, retryAction, waitForUrl, waitForDownload,
+} from '../main/utils';
+
+// Wait for API response triggered by an action
+const data = await waitForApiResponse(page, '/api/users', async () => {
+  await page.click('button#load');
+});
+
+// Wait for element to stop moving (layout stability)
+await waitForElementStable(locator);
+
+// Retry flaky interactions
+await retryAction(async () => {
+  await page.click('button#submit');
+  await expect(page.locator('.success')).toBeVisible();
+}, { retries: 3, delay: 1000 });
+
+// Wait for download
+const filePath = await waitForDownload(page, async () => {
+  await page.click('a#download');
+}, { saveDir: './downloads' });
+```
+
+## Auth Helpers
+
+Simple storage state management (cookies + localStorage):
+
+```typescript
+import { saveAuthState, loginAndSave, getAuthStatePath } from '../main/utils';
+
+// Login and save state
+await loginAndSave(page, {
+  url: '/login',
+  username: 'admin@test.com',
+  password: 'password',
+  successUrl: /dashboard/,
+  stateName: 'admin',
+});
+
+// Use in tests
+test.use({ storageState: getAuthStatePath('admin') });
+```
+
+## Accessibility Helpers
+
+Quick a11y checks without full axe-core:
+
+```typescript
+import { runA11yChecks, checkImagesHaveAlt, checkHeadingHierarchy } from '../main/utils';
+
+// Run all checks
+const result = await runA11yChecks(page);
+expect(result.passed).toBe(true);
+if (!result.passed) console.log(result.violations);
+
+// Individual checks
+const imgCheck = await checkImagesHaveAlt(page);
+const headingCheck = await checkHeadingHierarchy(page);
+const formCheck = await checkFormLabels(page);
+const kbCheck = await checkKeyboardAccessibility(page);
+```
+
+## Visual Helpers
+
+Debugging, scrolling, viewport management, and console error collection:
+
+```typescript
+import {
+  highlightElement, scrollToBottom, scrollToCenter,
+  collectConsoleErrors, takeFullPageScreenshot, VIEWPORTS,
+} from '../main/utils';
+
+// Highlight for debugging
+await highlightElement(locator, { color: 'red', duration: 3000 });
+
+// Scroll utilities
+await scrollToCenter(locator);
+await scrollToBottom(page);
+
+// Collect console errors during test
+const errors = collectConsoleErrors(page);
+// ... test actions ...
+expect(errors.get()).toHaveLength(0);
+
+// Viewport presets
+// VIEWPORTS.mobile (375x812), VIEWPORTS.tablet (768x1024),
+// VIEWPORTS.desktop (1440x900), VIEWPORTS.widescreen (1920x1080)
+```
+
+## BrowserStack Integration
+
+Run tests on real Android, iPhone, and Windows devices:
+
+```bash
+# Run all BrowserStack projects
+npx playwright test --config=browserstack.config.ts
+
+# Run specific device
+npx playwright test --config=browserstack.config.ts --project="BS iPhone 15"
+npx playwright test --config=browserstack.config.ts --project="BS Pixel 8"
+npx playwright test --config=browserstack.config.ts --project="BS Chrome Windows"
+```
+
+**Available projects:**
+
+| Project | Device |
+|---------|--------|
+| `BS Chrome Windows` | Chrome latest, Windows 11 |
+| `BS Edge Windows` | Edge latest, Windows 11 |
+| `BS Firefox Windows` | Firefox, Windows 11 |
+| `BS iPhone 15` | Safari/WebKit, iPhone 15 |
+| `BS iPhone 14` | Safari/WebKit, iPhone 14 |
+| `BS iPad Pro` | Safari/WebKit, iPad Pro 11 |
+| `BS Pixel 8` | Chrome, Pixel (Android) |
+| `BS Galaxy S23` | Chrome, Galaxy (Android) |
+
+Set credentials in `env/.env.dev`:
+
+```env
+BROWSERSTACK_USERNAME=your_username
+BROWSERSTACK_ACCESS_KEY=your_access_key
+```
+
+## Reporting
+
+```bash
+# Playwright HTML report
+npm run report:html
+
+# Allure report (requires Java)
+npm run report:allure          # Generate + open
+npm run report:allure:generate # Generate only
+npm run report:allure:open     # Open existing
+```
+
+## Tech Stack
+
+- **Test Runner:** @playwright/test
+- **Language:** TypeScript (strict mode)
+- **Linting:** ESLint + @typescript-eslint + eslint-plugin-playwright
+- **Formatting:** Prettier
+- **Reporting:** Allure + Playwright HTML
+- **PDF Parsing:** pdf-parse
+- **Image Comparison:** pixelmatch + pngjs
+- **Cross-platform:** cross-env for env variable management

@@ -89,3 +89,29 @@ export {
   takeFullPageScreenshot,
   VIEWPORTS,
 } from './visual-helpers';
+
+// DateTime helpers (clock control, date pickers, formatting, timezones)
+export {
+  freezeClock,
+  installClock,
+  advanceClock,
+  resumeClock,
+  setClockTime,
+  TIMEZONES,
+  formatDate,
+  today,
+  relativeDate,
+  relativeTo,
+  fillDateInput,
+  fillDateTimeInput,
+  fillTimeInput,
+  selectDateInPicker,
+} from './datetime-helpers';
+
+// Table/Grid helpers (read data, sort, filter, paginate, select, edit)
+export {
+  TableHelper,
+  type TableRow,
+  type TableConfig,
+  type SortDirection,
+} from './table-helpers';
