@@ -31,6 +31,12 @@ export interface MultiSnapshotResult {
 export interface SnapshotOptions {
   /** Custom name for the snapshot (defaults to test title) */
   name?: string;
+  /**
+   * Path to the test file calling this assertion.
+   * Used to determine where snapshots are stored (alongside the test file).
+   * Pass `__filename` or use the fixture which auto-injects this.
+   */
+  testFilePath?: string;
   /** Comparator options override for this assertion */
   comparatorOptions?: ComparatorOptions;
   /** Screenshot options passed to Playwright */
@@ -62,18 +68,23 @@ export interface SnapshotOptions {
  *   to determine if the diff is a real bug or just noise/alignment
  * - Supports adding new baselines via UPDATE_SNAPSHOTS=true or updateBaseline option
  *
- * Directory structure:
- *   <snapshotsDir>/
- *     <test-name>/
+ * Directory structure (folder-level, alongside test files):
+ *   src/tests/login/
+ *     login.spec.ts
+ *     login-dashboard-snapshots/
  *       baseline-1.png
  *       baseline-2.png
- *       baseline-3.png
+ *   src/tests/
+ *     home.spec.ts
+ *     home-heading-snapshots/
+ *       baseline-1.png
  *
  * Usage:
  *   const manager = new SnapshotManager();
- *   const result = await manager.assertScreenshot(page, { name: 'homepage' });
- *   // or
- *   const result = await manager.assertElementScreenshot(locator, { name: 'button' });
+ *   const result = await manager.assertScreenshot(page, {
+ *     name: 'homepage',
+ *     testFilePath: __filename,  // or use the fixture which auto-injects this
+ *   });
  */
 export class SnapshotManager {
   private readonly snapshotsDir: string;
@@ -81,7 +92,10 @@ export class SnapshotManager {
   private readonly diffOutputDir: string;
 
   constructor(options?: {
-    /** Root directory for storing baselines. Default: '__snapshots__' */
+    /**
+     * Root directory for storing baselines (fallback when testFilePath is not provided).
+     * Default: '__snapshots__'
+     */
     snapshotsDir?: string;
     /** Directory for diff output images. Default: 'test-results/snapshot-diffs' */
     diffOutputDir?: string;
@@ -94,6 +108,29 @@ export class SnapshotManager {
       outputDir: this.diffOutputDir,
       ...options?.comparatorOptions,
     });
+  }
+
+  /**
+   * Resolve the snapshot directory for a given test file and snapshot name.
+   *
+   * If testFilePath is provided:
+   *   src/tests/login/login.spec.ts + name "dashboard"
+   *   → src/tests/login/login-dashboard-snapshots/
+   *
+   * If testFilePath is NOT provided, falls back to:
+   *   <snapshotsDir>/<name>/
+   */
+  private resolveSnapshotDir(name: string, testFilePath?: string): string {
+    if (!testFilePath) {
+      return path.join(this.snapshotsDir, name);
+    }
+
+    // Extract the test file's directory and base name (without extension)
+    const testDir = path.dirname(testFilePath);
+    const testBaseName = path.basename(testFilePath).replace(/\.(spec|test)\.(ts|js|mjs)$/, '');
+    const folderName = `${testBaseName}-${name}-snapshots`;
+
+    return path.join(testDir, folderName);
   }
 
   // ─── Public API ─────────────────────────────────────────────────────────
@@ -141,7 +178,7 @@ export class SnapshotManager {
   ): Promise<MultiSnapshotResult> {
     const name = this.sanitizeName(options?.name || 'screenshot');
     const shouldUpdate = options?.updateBaseline || process.env.UPDATE_SNAPSHOTS === 'true';
-    const snapshotDir = path.join(this.snapshotsDir, name);
+    const snapshotDir = this.resolveSnapshotDir(name, options?.testFilePath);
 
     // If update mode, save as new baseline
     if (shouldUpdate) {
@@ -218,17 +255,22 @@ export class SnapshotManager {
 
   /**
    * Manually add a new valid baseline variant for a snapshot name.
+   * @param name - Snapshot name
+   * @param buffer - PNG buffer to save
+   * @param testFilePath - Optional test file path for folder-level storage
    */
-  addBaseline(name: string, buffer: Buffer): string {
-    const snapshotDir = path.join(this.snapshotsDir, this.sanitizeName(name));
+  addBaseline(name: string, buffer: Buffer, testFilePath?: string): string {
+    const snapshotDir = this.resolveSnapshotDir(this.sanitizeName(name), testFilePath);
     return this.saveNewBaseline(snapshotDir, buffer);
   }
 
   /**
    * List all stored baselines for a given snapshot name.
+   * @param name - Snapshot name
+   * @param testFilePath - Optional test file path for folder-level storage
    */
-  listBaselines(name: string): string[] {
-    const snapshotDir = path.join(this.snapshotsDir, this.sanitizeName(name));
+  listBaselines(name: string, testFilePath?: string): string[] {
+    const snapshotDir = this.resolveSnapshotDir(this.sanitizeName(name), testFilePath);
     if (!fs.existsSync(snapshotDir)) return [];
     return fs.readdirSync(snapshotDir)
       .filter((f) => f.endsWith('.png'))
@@ -237,20 +279,25 @@ export class SnapshotManager {
 
   /**
    * Remove a specific baseline by name and index.
+   * @param name - Snapshot name
+   * @param index - Baseline index to remove
+   * @param testFilePath - Optional test file path for folder-level storage
    */
-  removeBaseline(name: string, index: number): boolean {
-    const baselines = this.listBaselines(name);
+  removeBaseline(name: string, index: number, testFilePath?: string): boolean {
+    const baselines = this.listBaselines(name, testFilePath);
     if (index < 0 || index >= baselines.length) return false;
-    const snapshotDir = path.join(this.snapshotsDir, this.sanitizeName(name));
+    const snapshotDir = this.resolveSnapshotDir(this.sanitizeName(name), testFilePath);
     fs.unlinkSync(path.join(snapshotDir, baselines[index]));
     return true;
   }
 
   /**
    * Remove all baselines for a snapshot name.
+   * @param name - Snapshot name
+   * @param testFilePath - Optional test file path for folder-level storage
    */
-  clearBaselines(name: string): void {
-    const snapshotDir = path.join(this.snapshotsDir, this.sanitizeName(name));
+  clearBaselines(name: string, testFilePath?: string): void {
+    const snapshotDir = this.resolveSnapshotDir(this.sanitizeName(name), testFilePath);
     if (fs.existsSync(snapshotDir)) {
       fs.rmSync(snapshotDir, { recursive: true });
     }

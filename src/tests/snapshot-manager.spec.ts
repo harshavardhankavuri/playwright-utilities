@@ -156,4 +156,36 @@ test.describe('SnapshotManager - Multi-baseline', () => {
     expect(result2.isMatch).toBe(true);
     expect(result2.matchedBaselineIndex).toBe(0);
   });
+
+  test('should store snapshots at folder level when testFilePath is provided', async ({ page }) => {
+    await page.goto('https://playwright.dev');
+    await page.waitForLoadState('networkidle');
+
+    // Use a fresh manager without snapshotsDir override (uses folder-level storage)
+    const folderManager = new SnapshotManager({
+      diffOutputDir: path.resolve('test-results', 'snapshot-diffs'),
+    });
+
+    // Provide testFilePath — snapshots will be stored alongside this test file
+    const result = await folderManager.assertScreenshot(page, {
+      name: 'folder-level',
+      testFilePath: __filename,
+    });
+
+    expect(result.isMatch).toBe(true);
+
+    // Verify the snapshot folder was created next to this test file
+    const expectedDir = path.join(
+      path.dirname(__filename),
+      'snapshot-manager-folder-level-snapshots',
+    );
+    expect(fs.existsSync(expectedDir)).toBe(true);
+
+    // Verify baseline file exists
+    const files = fs.readdirSync(expectedDir).filter((f) => f.endsWith('.png'));
+    expect(files).toHaveLength(1);
+
+    // Clean up
+    fs.rmSync(expectedDir, { recursive: true });
+  });
 });
