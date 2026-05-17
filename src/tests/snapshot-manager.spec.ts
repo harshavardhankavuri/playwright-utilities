@@ -181,11 +181,8 @@ test.describe('SnapshotManager - Multi-baseline', () => {
     );
     expect(fs.existsSync(expectedDir)).toBe(true);
 
-    // Verify baseline file exists
+    // Verify baseline file exists (baselines are never deleted)
     const files = fs.readdirSync(expectedDir).filter((f) => f.endsWith('.png'));
-    expect(files).toHaveLength(1);
-
-    // Clean up
-    fs.rmSync(expectedDir, { recursive: true });
+    expect(files.length).toBeGreaterThanOrEqual(1);
   });
 });

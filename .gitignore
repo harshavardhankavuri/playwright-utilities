@@ -9,4 +9,5 @@ env/.env.local
 .auth/
 __snapshots__/
 __pdf-baselines__/
+*-snapshots/
 *.log

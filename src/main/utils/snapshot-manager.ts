@@ -278,29 +278,26 @@ export class SnapshotManager {
   }
 
   /**
-   * Remove a specific baseline by name and index.
-   * @param name - Snapshot name
-   * @param index - Baseline index to remove
-   * @param testFilePath - Optional test file path for folder-level storage
+   * @deprecated Baselines should not be deleted. Use version control to manage baseline history.
+   * This method is intentionally disabled to protect baseline integrity.
    */
-  removeBaseline(name: string, index: number, testFilePath?: string): boolean {
-    const baselines = this.listBaselines(name, testFilePath);
-    if (index < 0 || index >= baselines.length) return false;
-    const snapshotDir = this.resolveSnapshotDir(this.sanitizeName(name), testFilePath);
-    fs.unlinkSync(path.join(snapshotDir, baselines[index]));
-    return true;
+  removeBaseline(_name: string, _index: number, _testFilePath?: string): boolean {
+    console.warn(
+      '[SnapshotManager] removeBaseline() is disabled. Baselines are protected and should not be deleted. ' +
+      'Use version control (git) to manage baseline history.',
+    );
+    return false;
   }
 
   /**
-   * Remove all baselines for a snapshot name.
-   * @param name - Snapshot name
-   * @param testFilePath - Optional test file path for folder-level storage
+   * @deprecated Baselines should not be deleted. Use version control to manage baseline history.
+   * This method is intentionally disabled to protect baseline integrity.
    */
-  clearBaselines(name: string, testFilePath?: string): void {
-    const snapshotDir = this.resolveSnapshotDir(this.sanitizeName(name), testFilePath);
-    if (fs.existsSync(snapshotDir)) {
-      fs.rmSync(snapshotDir, { recursive: true });
-    }
+  clearBaselines(_name: string, _testFilePath?: string): void {
+    console.warn(
+      '[SnapshotManager] clearBaselines() is disabled. Baselines are protected and should not be deleted. ' +
+      'Use version control (git) to manage baseline history.',
+    );
   }
 
   // ─── Internal ───────────────────────────────────────────────────────────
