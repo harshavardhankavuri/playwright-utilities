@@ -60,6 +60,14 @@ export {
   loginAndSave,
 } from './auth-helpers';
 
+// Session manager (full session persistence with refresh token support)
+export {
+  SessionManager,
+  type FullSessionState,
+  type LoginConfig,
+  type SessionManagerOptions,
+} from './session-manager';
+
 // Accessibility helpers (basic a11y checks)
 export {
   checkImagesHaveAlt,
