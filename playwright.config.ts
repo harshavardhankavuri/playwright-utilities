@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 import dotenv from 'dotenv';
 import path from 'path';
+import xrayConfig from './src/main/util/xray/xray.config';
 
 /**
  * Load environment-specific .env file from the env/ directory.
@@ -19,6 +20,7 @@ export default defineConfig({
     ['list'],
     ['html', { open: 'never' }],
     ['allure-playwright'],
+    ['./src/main/util/xray/reporter/xrayReporter.ts', xrayConfig],
   ],
   timeout: 30_000,
   expect: {
