@@ -16,16 +16,20 @@ Negation via `.not` applies only to the immediately following assertion, then re
 
 ## Configuration
 
-The factory functions accept an optional timeout that applies to all assertions in the chain:
+The factory functions accept an optional second argument — either a string label (matching Playwright's `expect(value, message)` shape) or an options object:
 
 ```typescript
 import { fluentExpect, fluentExpectPage, fluentExpectResponse } from '@utils/assertions';
 
-// Default timeout: 5000ms
+// Default: 5000ms timeout, no label
 fluentExpect(locator);
 
-// Custom timeout for all assertions in this chain
-fluentExpect(locator, { timeout: 10_000 });
+// Label as second arg — appears in failure messages
+fluentExpect(input, 'username field');
+fluentExpectPage(page, 'login page');
+
+// Options object: custom timeout + label
+fluentExpect(locator, { timeout: 10_000, message: 'submit button' });
 ```
 
 Individual assertions can override the timeout:
@@ -37,6 +41,33 @@ await fluentExpect(locator)
 ```
 
 ## Usage Examples
+
+### Mixed-negation chain with label
+
+The exact pattern that doesn't work with Playwright's stock `expect()`:
+
+```typescript
+// Stock Playwright (DOES NOT chain — each call is separate):
+await expect(input, 'username field').toBeVisible();
+await expect(input, 'username field').not.toBeEnabled();
+await expect(input, 'username field').toHaveValue('admin');
+await expect(input, 'username field').not.toHaveCSS('color', 'red');
+await expect(input, 'username field').not.toHaveAttribute('disabled');
+
+// fluentExpect (single chain, single await):
+await fluentExpect(input, 'username field')
+  .toBeVisible()
+  .not.toBeEnabled()
+  .toHaveValue('admin')
+  .not.toHaveCSS('color', 'red')
+  .not.toHaveAttribute('disabled')
+  .satisfies(async (loc) => {
+    const box = await loc.boundingBox();
+    if (!box || box.width < 100) throw new Error('too narrow');
+  });
+```
+
+The `'username field'` label is forwarded to Playwright's `expect()` so it appears in failure messages. Each `.not` applies only to the next assertion and resets automatically.
 
 ### Locator assertions (chained)
 

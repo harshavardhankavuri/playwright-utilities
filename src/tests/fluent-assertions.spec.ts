@@ -87,3 +87,63 @@ test.describe('Fluent Assertions - Page @smoke', () => {
       .toHaveURL(/inventory/);
   });
 });
+
+test.describe('Fluent Assertions - Label & Mixed-negation chains', () => {
+  test.beforeEach(async ({ loginPage }) => {
+    await configureAllure({
+      parentSuite: 'SauceDemo',
+      suite: 'Assertions',
+      subSuite: 'Labels & Mixed Chains',
+      tags: ['smoke', 'assertions'],
+    });
+    await loginPage.goto();
+  });
+
+  test('accepts a string label as second arg like Playwright expect(value, message)', async ({ page }) => {
+    const username = page.locator('[data-test="username"]');
+
+    // Single chain mixing positive and .not assertions, with a label.
+    await fluentExpect(username, 'username field')
+      .toBeVisible()
+      .toBeEnabled()
+      .not.toBeDisabled()
+      .toHaveAttribute('placeholder', 'Username')
+      .not.toHaveValue('admin')
+      .satisfies(async (loc) => {
+        const box = await loc.boundingBox();
+        if (!box || box.width < 100) throw new Error('too narrow');
+      });
+  });
+
+  test('accepts options object with timeout and message', async ({ page }) => {
+    const password = page.locator('[data-test="password"]');
+
+    await fluentExpect(password, { timeout: 5000, message: 'password field' })
+      .toBeVisible()
+      .toHaveAttribute('type', 'password')
+      .not.toBeDisabled();
+  });
+
+  test('label propagates into Playwright failure message', async ({ page }) => {
+    const username = page.locator('[data-test="username"]');
+
+    let captured: Error | null = null;
+    try {
+      await fluentExpect(username, 'username field')
+        .toHaveValue('expected-but-empty', { timeout: 1000 });
+    } catch (err) {
+      captured = err as Error;
+    }
+
+    expect(captured).toBeTruthy();
+    // Playwright includes the message label in the failure message
+    expect(captured!.message).toContain('username field');
+  });
+
+  test('page chain supports label as second arg', async ({ page }) => {
+    await fluentExpectPage(page, 'login page')
+      .toHaveTitle('Swag Labs')
+      .toHaveURL(/saucedemo\.com/)
+      .not.toHaveURL(/inventory/);
+  });
+});

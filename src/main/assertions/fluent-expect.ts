@@ -35,11 +35,13 @@ export class FluentLocatorExpect implements PromiseLike<void> {
   private readonly locator: Locator;
   private readonly steps: AssertionStep[] = [];
   private readonly defaultTimeout: number;
+  private readonly chainLabel: string | undefined;
   private negate = false;
 
-  constructor(locator: Locator, options?: { timeout?: number }) {
+  constructor(locator: Locator, options?: { timeout?: number; message?: string }) {
     this.locator = locator;
     this.defaultTimeout = options?.timeout ?? 5_000;
+    this.chainLabel = options?.message;
   }
 
   /** Negate the next assertion. */
@@ -56,8 +58,13 @@ export class FluentLocatorExpect implements PromiseLike<void> {
     return val;
   }
 
+  /** Combine the chain-level label with a per-call override. */
+  private label(perCall?: string): string | undefined {
+    return perCall ?? this.chainLabel;
+  }
+
   private pw(message?: string) {
-    return playwrightExpect(this.locator, message);
+    return playwrightExpect(this.locator, this.label(message));
   }
 
   private pwMaybeNot(negated: boolean, message?: string) {
@@ -492,11 +499,13 @@ export class FluentPageExpect implements PromiseLike<void> {
   private readonly page: Page;
   private readonly steps: AssertionStep[] = [];
   private readonly defaultTimeout: number;
+  private readonly chainLabel: string | undefined;
   private negate = false;
 
-  constructor(page: Page, options?: { timeout?: number }) {
+  constructor(page: Page, options?: { timeout?: number; message?: string }) {
     this.page = page;
     this.defaultTimeout = options?.timeout ?? 5_000;
+    this.chainLabel = options?.message;
   }
 
   get not(): this {
@@ -511,7 +520,7 @@ export class FluentPageExpect implements PromiseLike<void> {
   }
 
   private pw(message?: string) {
-    return playwrightExpect(this.page, message);
+    return playwrightExpect(this.page, message ?? this.chainLabel);
   }
 
   private pwMaybeNot(negated: boolean, message?: string) {
@@ -675,13 +684,22 @@ export class FluentResponseExpect implements PromiseLike<void> {
 /**
  * Create a chainable fluent assertion for a Locator.
  *
+ * The second argument can be either:
+ *  - A descriptive label string (matches Playwright's `expect(value, message)` shape)
+ *  - An options object `{ timeout, message }`
+ *
  * Usage:
  *   await fluentExpect(locator).toBeVisible().toHaveText('Hello');
+ *   await fluentExpect(input, 'username field').toBeVisible().toBeEnabled();
+ *   await fluentExpect(input, { timeout: 10_000, message: 'username field' }).toBeVisible();
  */
 export function fluentExpect(
   locator: Locator,
-  options?: { timeout?: number },
+  labelOrOptions?: string | { timeout?: number; message?: string },
 ): FluentLocatorExpect {
+  const options = typeof labelOrOptions === 'string'
+    ? { message: labelOrOptions }
+    : labelOrOptions;
   return new FluentLocatorExpect(locator, options);
 }
 
@@ -690,11 +708,15 @@ export function fluentExpect(
  *
  * Usage:
  *   await fluentExpectPage(page).toHaveTitle('Home').toHaveURL(/home/);
+ *   await fluentExpectPage(page, 'login page').toHaveURL(/\/login$/);
  */
 export function fluentExpectPage(
   page: Page,
-  options?: { timeout?: number },
+  labelOrOptions?: string | { timeout?: number; message?: string },
 ): FluentPageExpect {
+  const options = typeof labelOrOptions === 'string'
+    ? { message: labelOrOptions }
+    : labelOrOptions;
   return new FluentPageExpect(page, options);
 }
 
