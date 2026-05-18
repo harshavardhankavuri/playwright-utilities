@@ -185,17 +185,32 @@ stages:
           # ─── Reports ────────────────────────────────────────────────────
           - script: |
               npm install -g allure-commandline
-              if [ "${{ parameters.reportMode }}" = "single" ]; then
-                node scripts/allure-single.js
-              else
-                npx allure generate allure-results --clean -o reports/allure
-              fi
-            displayName: 'Generate Allure report'
+              # Generate Allure single-file report (clean, no traces in HTML)
+              node scripts/allure-single.js
+              # Generate full Allure report for detailed debugging
+              npx allure generate allure-results --clean -o reports/allure-full
+            displayName: 'Generate Allure reports'
             condition: always()
 
           # ─── Publish Artifacts ──────────────────────────────────────────
           - task: PublishPipelineArtifact@1
-            displayName: 'Publish Allure results'
+            displayName: 'Publish Allure single-file report'
+            condition: always()
+            inputs:
+              targetPath: 'reports/allure-single/index.html'
+              artifact: 'allure-single-report-${{ parameters.project }}'
+              publishLocation: 'pipeline'
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish Playwright HTML report'
+            condition: always()
+            inputs:
+              targetPath: 'reports/html'
+              artifact: 'playwright-html-report-${{ parameters.project }}'
+              publishLocation: 'pipeline'
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish Allure results (raw, with traces)'
             condition: always()
             inputs:
               targetPath: 'allure-results'
@@ -203,15 +218,7 @@ stages:
               publishLocation: 'pipeline'
 
           - task: PublishPipelineArtifact@1
-            displayName: 'Publish Allure report'
-            condition: always()
-            inputs:
-              targetPath: 'reports'
-              artifact: 'allure-report-${{ parameters.project }}'
-              publishLocation: 'pipeline'
-
-          - task: PublishPipelineArtifact@1
-            displayName: 'Publish test results (traces, screenshots)'
+            displayName: 'Publish test results (traces, screenshots, videos)'
             condition: always()
             inputs:
               targetPath: 'test-results'

@@ -24,6 +24,7 @@ const isSingleReport = reportMode === 'single';
 const reporters: any[] = isSingleReport
   ? [
       ['list'],
+      ['html', { open: 'never', outputFolder: 'reports/html' }],
       ['allure-playwright', { outputFolder: 'allure-results' }],
     ]
   : [

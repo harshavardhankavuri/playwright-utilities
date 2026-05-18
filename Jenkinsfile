@@ -151,11 +151,11 @@ pipeline {
         stage('Report') {
             steps {
                 script {
-                    if (params.REPORT_MODE == 'single') {
-                        sh 'node scripts/allure-single.js'
-                    } else {
-                        sh 'npx allure generate allure-results --clean -o reports/allure'
-                    }
+                    // Generate Allure single-file report (clean, no traces)
+                    sh 'node scripts/allure-single.js'
+
+                    // Also generate full Allure report for detailed view
+                    sh 'npx allure generate allure-results --clean -o reports/allure-full'
                 }
             }
             post {
@@ -163,8 +163,14 @@ pipeline {
                     // Publish Allure report (requires Allure Jenkins Plugin)
                     allure includeProperties: false, results: [[path: 'allure-results']]
 
-                    // Archive HTML report
-                    archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true
+                    // Archive Allure single-file HTML
+                    archiveArtifacts artifacts: 'reports/allure-single/index.html', allowEmptyArchive: true
+
+                    // Archive Playwright HTML report
+                    archiveArtifacts artifacts: 'reports/html/**', allowEmptyArchive: true
+
+                    // Archive full Allure report
+                    archiveArtifacts artifacts: 'reports/allure-full/**', allowEmptyArchive: true
                 }
             }
         }
