@@ -168,7 +168,7 @@
         "source": "auto"
       }
     ],
-    "updatedAt": 1779100867523,
+    "updatedAt": 1779101223828,
     "pagePattern": "https://www.saucedemo.com/"
   },
   "login-password": {
@@ -217,7 +217,7 @@
         "source": "auto"
       }
     ],
-    "updatedAt": 1779100867568,
+    "updatedAt": 1779101223874,
     "pagePattern": "https://www.saucedemo.com/"
   },
   "login-submit": {
@@ -260,7 +260,7 @@
         "source": "auto"
       }
     ],
-    "updatedAt": 1779100867620,
+    "updatedAt": 1779101223930,
     "pagePattern": "https://www.saucedemo.com/"
   }
 }
