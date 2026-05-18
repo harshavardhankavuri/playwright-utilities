@@ -3,10 +3,13 @@ import { BasePage } from './base.page';
 
 /**
  * HomePage - Page object for the Playwright documentation home page.
- * Demonstrates the POM pattern with locators and actions.
+ *
+ * Uses SmartLocator for self-healing: if a primary locator breaks due to
+ * UI changes, the framework automatically tries fallback strategies
+ * (testId, role, label, text, CSS) to find the element.
  */
 export class HomePage extends BasePage {
-  // Locators
+  // Primary locators (used for initial registration and direct access)
   readonly getStartedLink: Locator;
   readonly heading: Locator;
   readonly searchButton: Locator;
@@ -19,31 +22,43 @@ export class HomePage extends BasePage {
   }
 
   /**
-   * Navigate to the home page.
+   * Navigate to the home page and register all elements with SmartLocator.
+   * Registration scans each element's DOM attributes and stores multiple
+   * locator strategies for self-healing.
    */
   async goto(): Promise<void> {
     await this.navigate('/');
     await this.waitForPageLoad();
+
+    // Register elements for self-healing (best-effort, non-blocking)
+    await this.registerLocator('home-get-started', this.getStartedLink);
+    await this.registerLocator('home-heading', this.heading);
+    await this.registerLocator('home-search-button', this.searchButton);
   }
 
   /**
    * Click the "Get Started" link.
+   * Uses SmartLocator — if the primary role locator breaks, falls back
+   * to alternative strategies (text, CSS, href, etc.).
    */
   async clickGetStarted(): Promise<void> {
-    await this.click(this.getStartedLink);
+    const locator = await this.findSmart('home-get-started');
+    await this.click(locator);
   }
 
   /**
    * Open the search dialog.
    */
   async openSearch(): Promise<void> {
-    await this.click(this.searchButton);
+    const locator = await this.findSmart('home-search-button');
+    await this.click(locator);
   }
 
   /**
    * Check if the main heading is visible.
    */
   async isHeadingVisible(): Promise<boolean> {
-    return this.isVisible(this.heading);
+    const locator = await this.findSmart('home-heading');
+    return this.isVisible(locator);
   }
 }

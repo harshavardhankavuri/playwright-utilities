@@ -1,14 +1,18 @@
 import { type Locator, type Page } from '@playwright/test';
+import { SmartLocator } from '../utils';
 
 /**
  * BasePage - Abstract base class for all page objects.
  * Contains common methods shared across all pages.
+ * Integrates SmartLocator for self-healing element resolution.
  */
 export abstract class BasePage {
   readonly page: Page;
+  readonly smart: SmartLocator;
 
   constructor(page: Page) {
     this.page = page;
+    this.smart = new SmartLocator(page, { verbose: false });
   }
 
   /**
@@ -74,5 +78,25 @@ export abstract class BasePage {
    */
   async waitForElement(locator: Locator, timeout?: number): Promise<void> {
     await locator.waitFor({ state: 'visible', timeout });
+  }
+
+  /**
+   * Register a locator with SmartLocator for self-healing.
+   * Call this after navigation when elements are present on the page.
+   */
+  protected async registerLocator(name: string, locator: Locator): Promise<void> {
+    try {
+      await this.smart.register(name, locator);
+    } catch {
+      // Registration is best-effort — don't fail the test
+    }
+  }
+
+  /**
+   * Find an element using SmartLocator with auto-healing fallback.
+   * If the primary locator breaks, tries alternative strategies.
+   */
+  protected async findSmart(name: string): Promise<Locator> {
+    return this.smart.locate(name);
   }
 }
