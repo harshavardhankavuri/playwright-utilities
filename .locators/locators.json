@@ -3,82 +3,123 @@
     "name": "home-get-started",
     "strategies": [
       {
+        "type": "custom",
+        "value": "role:link Get started",
+        "weight": 200,
+        "source": "user"
+      },
+      {
+        "type": "custom",
+        "value": "css:href",
+        "weight": 100,
+        "source": "user"
+      },
+      {
         "type": "role",
         "value": "link",
         "options": {
           "name": "Get started"
         },
-        "confidence": 0.72
+        "weight": 72,
+        "source": "auto"
       },
       {
         "type": "text",
         "value": "Get started",
-        "confidence": 0.7
+        "weight": 70,
+        "source": "auto"
       },
       {
         "type": "css",
         "value": "#__docusaurus_skipToContent_fallback > header > div > div > a",
-        "confidence": 0.3
+        "weight": 30,
+        "source": "auto"
       },
       {
         "type": "xpath",
         "value": "/html[1]/body[1]/div[1]/div[2]/header[1]/div[1]/div[1]/a[1]",
-        "confidence": 0.2
+        "weight": 20,
+        "source": "auto"
       }
     ],
-    "updatedAt": 1779093750722,
+    "updatedAt": 1779095131588,
     "pagePattern": "https://playwright.dev/"
   },
   "home-heading": {
     "name": "home-heading",
     "strategies": [
       {
+        "type": "custom",
+        "value": "user-locator-0",
+        "weight": 100,
+        "source": "user"
+      },
+      {
         "type": "css",
         "value": "#__docusaurus_skipToContent_fallback > header > div > h1",
-        "confidence": 0.3
+        "weight": 30,
+        "source": "auto"
       },
       {
         "type": "xpath",
         "value": "/html[1]/body[1]/div[1]/div[2]/header[1]/div[1]/h1[1]",
-        "confidence": 0.2
+        "weight": 20,
+        "source": "auto"
       }
     ],
-    "updatedAt": 1779093750787,
+    "updatedAt": 1779095131636,
     "pagePattern": "https://playwright.dev/"
   },
   "home-search-button": {
     "name": "home-search-button",
     "strategies": [
       {
+        "type": "custom",
+        "value": "role:button Search",
+        "weight": 200,
+        "source": "user"
+      },
+      {
+        "type": "custom",
+        "value": "css:class",
+        "weight": 100,
+        "source": "user"
+      },
+      {
         "type": "role",
         "value": "button",
         "options": {
           "name": "Search (Ctrl+K)"
         },
-        "confidence": 0.9
+        "weight": 90,
+        "source": "auto"
       },
       {
         "type": "label",
         "value": "Search (Ctrl+K)",
-        "confidence": 0.88
+        "weight": 88,
+        "source": "auto"
       },
       {
         "type": "text",
         "value": "Search\nK",
-        "confidence": 0.7
+        "weight": 70,
+        "source": "auto"
       },
       {
         "type": "css",
         "value": "#__docusaurus > nav > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > button",
-        "confidence": 0.3
+        "weight": 30,
+        "source": "auto"
       },
       {
         "type": "xpath",
         "value": "/html[1]/body[1]/div[1]/nav[1]/div[1]/div[2]/div[2]/button[1]",
-        "confidence": 0.2
+        "weight": 20,
+        "source": "auto"
       }
     ],
-    "updatedAt": 1779093750826,
+    "updatedAt": 1779095131671,
     "pagePattern": "https://playwright.dev/"
   }
 }

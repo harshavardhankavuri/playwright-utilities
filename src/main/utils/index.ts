@@ -120,6 +120,7 @@ export {
 export {
   SmartLocator,
   type LocatorStrategy,
+  type UserLocatorEntry,
   type ElementFingerprint,
   type HealingResult,
   type SmartLocatorOptions,

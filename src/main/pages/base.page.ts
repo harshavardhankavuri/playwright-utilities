@@ -81,12 +81,15 @@ export abstract class BasePage {
   }
 
   /**
-   * Register a locator with SmartLocator for self-healing.
-   * Call this after navigation when elements are present on the page.
+   * Register locator(s) with SmartLocator for self-healing.
+   * Accepts a single Locator, a UserLocatorEntry, or an array of weighted entries.
    */
-  protected async registerLocator(name: string, locator: Locator): Promise<void> {
+  protected async registerLocator(
+    name: string,
+    locators: Locator | import('../utils').UserLocatorEntry | Array<import('../utils').UserLocatorEntry | Locator>,
+  ): Promise<void> {
     try {
-      await this.smart.register(name, locator);
+      await this.smart.register(name, locators);
     } catch {
       // Registration is best-effort — don't fail the test
     }

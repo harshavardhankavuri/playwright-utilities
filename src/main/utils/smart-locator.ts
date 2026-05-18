@@ -11,13 +11,47 @@ import * as path from 'path';
  */
 export interface LocatorStrategy {
   /** Strategy type identifier */
-  type: 'role' | 'text' | 'label' | 'placeholder' | 'testId' | 'css' | 'xpath' | 'id' | 'name' | 'title' | 'altText';
+  type:
+    | 'role'
+    | 'text'
+    | 'label'
+    | 'placeholder'
+    | 'testId'
+    | 'css'
+    | 'xpath'
+    | 'id'
+    | 'name'
+    | 'title'
+    | 'altText'
+    | 'custom';
   /** The selector/value for this strategy */
   value: string;
   /** Additional options (e.g. { exact: true } for text) */
   options?: Record<string, unknown>;
-  /** Confidence score (0-1). Higher = more reliable/stable */
-  confidence: number;
+  /**
+   * Weight/priority. Higher = tried first.
+   * - User-provided locators: 100+ (always tried before auto strategies)
+   * - Auto-extracted strategies: 0-95 based on stability (testId=95, role=90, etc.)
+   */
+  weight: number;
+  /** Source of this strategy: user-provided (default) or auto-extracted (healing) */
+  source: 'user' | 'auto';
+}
+
+/**
+ * A user-provided locator entry. Can be a Locator directly or with weight metadata.
+ */
+export interface UserLocatorEntry {
+  /** The Playwright Locator (must already be constructed) */
+  locator: Locator;
+  /**
+   * Weight (higher = tried first). Default: 100.
+   * Use higher values to prefer one locator over another within user-provided ones.
+   * Example: primary={ locator: ..., weight: 200 }, fallback={ locator: ..., weight: 100 }
+   */
+  weight?: number;
+  /** Optional human-readable description (used in logs) */
+  description?: string;
 }
 
 /**
@@ -26,7 +60,7 @@ export interface LocatorStrategy {
 export interface ElementFingerprint {
   /** Unique name for this element (e.g. 'login-submit-button') */
   name: string;
-  /** All known strategies to locate this element, ordered by confidence */
+  /** All known strategies to locate this element, ordered by weight (desc) */
   strategies: LocatorStrategy[];
   /** When this fingerprint was last updated */
   updatedAt: number;
@@ -44,9 +78,9 @@ export interface HealingResult {
   locator?: Locator;
   /** Which strategy succeeded */
   usedStrategy?: LocatorStrategy;
-  /** Index of the strategy that worked (0 = primary) */
+  /** Index of the strategy that worked (0 = highest priority) */
   strategyIndex: number;
-  /** Whether healing was needed (primary failed) */
+  /** Whether healing was needed (a non-user strategy was used) */
   healed: boolean;
   /** All strategies that were tried */
   triedStrategies: string[];
@@ -66,6 +100,13 @@ export interface SmartLocatorOptions {
   autoUpdate?: boolean;
   /** Whether to log healing activity. Default: true */
   verbose?: boolean;
+  /**
+   * Whether to extract auto-healing fallback strategies on register().
+   * When true, the framework scans the element's DOM attributes and stores
+   * additional strategies that are only used if user-provided locators fail.
+   * Default: true
+   */
+  enableAutoHealing?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -77,40 +118,41 @@ const DEFAULT_OPTIONS: Required<SmartLocatorOptions> = {
   strategyTimeout: 3_000,
   autoUpdate: true,
   verbose: true,
+  enableAutoHealing: true,
 };
+
+/** Default weight for user-provided locators (above all auto strategies). */
+const DEFAULT_USER_WEIGHT = 100;
 
 /**
  * SmartLocator — Self-healing locator utility for Playwright.
  *
- * Records multiple locator strategies for each element. When the primary
- * locator breaks (element not found), automatically tries fallback strategies
- * to find the element. No AI — uses deterministic DOM attribute analysis.
+ * BEHAVIOR:
+ * 1. User-provided locators (passed to register) are tried FIRST, in weight order.
+ * 2. If ALL user locators fail, auto-extracted DOM fingerprints are tried as
+ *    healing fallbacks (testId > role > label > placeholder > id > text > CSS > xpath).
+ * 3. When healing succeeds, logs which strategy worked and optionally promotes it.
  *
- * How it works:
- * 1. On first use, scans the element and records ALL possible locator strategies
- *    (role, text, label, testId, CSS, id, name, etc.)
- * 2. Ranks strategies by stability confidence (role > testId > text > CSS > xpath)
- * 3. On subsequent uses, tries the primary strategy first
- * 4. If primary fails, tries each fallback in confidence order
- * 5. When a fallback succeeds, logs the healing and optionally updates the store
+ * USER-PROVIDED LOCATORS:
+ *   Single locator (default weight):
+ *     await smart.register('submit-btn', page.getByRole('button', { name: 'Submit' }));
  *
- * Usage:
- *   const smart = new SmartLocator(page);
+ *   Multiple weighted locators (highest weight tried first):
+ *     await smart.register('submit-btn', [
+ *       { locator: page.getByTestId('submit'), weight: 300 },
+ *       { locator: page.getByRole('button', { name: 'Submit' }), weight: 200 },
+ *       { locator: page.locator('#submit-btn'), weight: 100 },
+ *     ]);
  *
- *   // Register an element (scans and stores all strategies)
- *   await smart.register('submit-btn', page.getByRole('button', { name: 'Submit' }));
- *
- *   // Later, find with auto-healing
- *   const btn = await smart.find('submit-btn');
- *   await btn.click();
- *
- *   // Or use the locate() shorthand that returns a Locator directly
- *   await (await smart.locate('submit-btn')).click();
+ *   Disable auto-healing fallbacks (use only user locators):
+ *     const smart = new SmartLocator(page, { enableAutoHealing: false });
  */
 export class SmartLocator {
   private readonly page: Page;
   private readonly options: Required<SmartLocatorOptions>;
   private fingerprints: Map<string, ElementFingerprint> = new Map();
+  /** Live Locator instances for user-provided strategies (not serializable) */
+  private liveLocators: Map<string, Locator[]> = new Map();
 
   constructor(page: Page, options?: SmartLocatorOptions) {
     this.page = page;
@@ -121,19 +163,59 @@ export class SmartLocator {
   // ─── Public API ─────────────────────────────────────────────────────────
 
   /**
-   * Register an element by scanning it and storing all possible locator strategies.
-   * Call this when you know the element is present and correct.
+   * Register an element with one or more user-provided locators.
+   * User locators are tried FIRST in weight order.
+   * If autoHealing is enabled, also extracts auto-fallback strategies from the
+   * primary (highest-weight) user locator's live element.
+   *
+   * @param name - Unique identifier for this element
+   * @param locators - Single Locator OR array of weighted UserLocatorEntry
    */
-  async register(name: string, locator: Locator): Promise<ElementFingerprint> {
-    // Ensure element exists
-    await locator.waitFor({ state: 'attached', timeout: this.options.strategyTimeout });
+  async register(
+    name: string,
+    locators: Locator | UserLocatorEntry | Array<UserLocatorEntry | Locator>,
+  ): Promise<ElementFingerprint> {
+    const entries = this.normalizeUserLocators(locators);
 
-    // Extract all possible strategies from the element
-    const strategies = await this.extractStrategies(locator);
+    if (entries.length === 0) {
+      throw new Error(`[SmartLocator] register("${name}") requires at least one locator`);
+    }
+
+    // Sort user entries by weight (highest first)
+    entries.sort((a, b) => (b.weight ?? DEFAULT_USER_WEIGHT) - (a.weight ?? DEFAULT_USER_WEIGHT));
+
+    // Build user strategies (live Locators are kept in liveLocators map for direct use)
+    const userStrategies: LocatorStrategy[] = entries.map((e, i) => ({
+      type: 'custom',
+      value: e.description || `user-locator-${i}`,
+      weight: e.weight ?? DEFAULT_USER_WEIGHT,
+      source: 'user',
+    }));
+
+    // Cache the live Locator instances for runtime use
+    this.liveLocators.set(name, entries.map((e) => e.locator));
+
+    // Optionally extract auto-healing strategies from the primary locator
+    let autoStrategies: LocatorStrategy[] = [];
+    if (this.options.enableAutoHealing) {
+      try {
+        const primary = entries[0].locator;
+        await primary.waitFor({ state: 'attached', timeout: this.options.strategyTimeout });
+        autoStrategies = await this.extractStrategies(primary);
+      } catch (err) {
+        if (this.options.verbose) {
+          console.warn(
+            `[SmartLocator] Could not extract auto-healing strategies for "${name}": ${
+              err instanceof Error ? err.message : err
+            }`,
+          );
+        }
+      }
+    }
 
     const fingerprint: ElementFingerprint = {
       name,
-      strategies: strategies.sort((a, b) => b.confidence - a.confidence),
+      strategies: [...userStrategies, ...autoStrategies].sort((a, b) => b.weight - a.weight),
       updatedAt: Date.now(),
       pagePattern: this.page.url(),
     };
@@ -142,15 +224,18 @@ export class SmartLocator {
     this.saveStore();
 
     if (this.options.verbose) {
-      console.log(`[SmartLocator] Registered "${name}" with ${strategies.length} strategies`);
+      console.log(
+        `[SmartLocator] Registered "${name}": ${userStrategies.length} user locator(s), ${autoStrategies.length} auto fallback(s)`,
+      );
     }
 
     return fingerprint;
   }
 
   /**
-   * Find an element using stored strategies with auto-healing.
-   * Tries primary strategy first, falls back to alternatives if it fails.
+   * Find an element using stored strategies.
+   * Tries user-provided locators first (in weight order), then auto-healing
+   * fallbacks if all user locators fail.
    */
   async find(name: string): Promise<HealingResult> {
     const fingerprint = this.fingerprints.get(name);
@@ -165,33 +250,58 @@ export class SmartLocator {
     }
 
     const triedStrategies: string[] = [];
+    const userLocators = this.liveLocators.get(name) ?? [];
+    let userLocatorIdx = 0;
 
     for (let i = 0; i < fingerprint.strategies.length; i++) {
       const strategy = fingerprint.strategies[i];
-      const locator = this.strategyToLocator(strategy);
-      triedStrategies.push(`${strategy.type}:${strategy.value}`);
+      const isUserStrategy = strategy.source === 'user';
+
+      // Get the locator: user strategies use the live cached Locator; auto strategies are reconstructed
+      let locator: Locator;
+      if (isUserStrategy) {
+        if (userLocatorIdx >= userLocators.length) {
+          // User strategies in fingerprint exceed cached live locators (e.g. cross-run)
+          // Skip — these can't be reconstructed without re-registration
+          continue;
+        }
+        locator = userLocators[userLocatorIdx++];
+      } else {
+        locator = this.strategyToLocator(strategy);
+      }
+
+      triedStrategies.push(`${strategy.source}:${strategy.type}:${strategy.value}`);
 
       try {
         await locator.waitFor({ state: 'attached', timeout: this.options.strategyTimeout });
         const count = await locator.count();
 
-        if (count === 1) {
-          const healed = i > 0;
+        if (count >= 1) {
+          // Healing means: a non-user strategy was used (user locators all failed)
+          const healed = !isUserStrategy;
           const summary = healed
-            ? `[SmartLocator] ⚠️ HEALED "${name}": primary "${fingerprint.strategies[0].type}:${fingerprint.strategies[0].value}" failed. Used fallback "${strategy.type}:${strategy.value}" (strategy #${i + 1})`
-            : `[SmartLocator] ✅ "${name}" found with primary strategy`;
+            ? `[SmartLocator] ⚠️ HEALED "${name}": all user locator(s) failed. Used auto fallback "${strategy.type}:${strategy.value}" (weight ${strategy.weight})`
+            : `[SmartLocator] ✅ "${name}" found with user locator (weight ${strategy.weight})`;
 
           if (healed && this.options.verbose) {
             console.warn(summary);
           }
 
-          // Auto-update: promote the working strategy to higher confidence
+          // Auto-update: promote the working auto strategy when healing succeeded
           if (healed && this.options.autoUpdate) {
             this.promoteStrategy(fingerprint, i);
             this.saveStore();
           }
 
-          return { found: true, locator, usedStrategy: strategy, strategyIndex: i, healed, triedStrategies, summary };
+          return {
+            found: true,
+            locator,
+            usedStrategy: strategy,
+            strategyIndex: i,
+            healed,
+            triedStrategies,
+            summary,
+          };
         }
       } catch {
         // Strategy failed, try next
@@ -219,11 +329,13 @@ export class SmartLocator {
   }
 
   /**
-   * Re-scan an element and update its stored strategies.
-   * Use after intentional UI changes to refresh the fingerprint.
+   * Re-register an element with new locators (refreshes both user and auto strategies).
    */
-  async refresh(name: string, locator: Locator): Promise<ElementFingerprint> {
-    return this.register(name, locator);
+  async refresh(
+    name: string,
+    locators: Locator | UserLocatorEntry | Array<UserLocatorEntry | Locator>,
+  ): Promise<ElementFingerprint> {
+    return this.register(name, locators);
   }
 
   /**
@@ -240,11 +352,50 @@ export class SmartLocator {
     return Array.from(this.fingerprints.keys());
   }
 
-  // ─── Strategy Extraction ────────────────────────────────────────────────
+  // ─── Internal: Normalize User Input ─────────────────────────────────────
 
   /**
-   * Extract all possible locator strategies from a live element.
-   * Scans the element's attributes, text, role, and position in the DOM.
+   * Convert any of the accepted input shapes into a uniform UserLocatorEntry array.
+   */
+  private normalizeUserLocators(
+    input: Locator | UserLocatorEntry | Array<UserLocatorEntry | Locator>,
+  ): UserLocatorEntry[] {
+    // Array input
+    if (Array.isArray(input)) {
+      return input.map((item) =>
+        this.isLocator(item)
+          ? { locator: item, weight: DEFAULT_USER_WEIGHT }
+          : item,
+      );
+    }
+
+    // Single Locator
+    if (this.isLocator(input)) {
+      return [{ locator: input, weight: DEFAULT_USER_WEIGHT }];
+    }
+
+    // Single UserLocatorEntry
+    return [input];
+  }
+
+  /**
+   * Type guard: is the value a Playwright Locator?
+   */
+  private isLocator(value: unknown): value is Locator {
+    return (
+      value !== null &&
+      typeof value === 'object' &&
+      typeof (value as Locator).waitFor === 'function' &&
+      typeof (value as Locator).click === 'function'
+    );
+  }
+
+  // ─── Internal: Auto Strategy Extraction ─────────────────────────────────
+
+  /**
+   * Extract auto-healing fallback strategies from a live element.
+   * Scans the element's DOM attributes to build alternative locators.
+   * These are only used when ALL user-provided locators fail.
    */
   private async extractStrategies(locator: Locator): Promise<LocatorStrategy[]> {
     const strategies: LocatorStrategy[] = [];
@@ -254,23 +405,18 @@ export class SmartLocator {
       return {
         id: htmlEl.id || null,
         name: htmlEl.getAttribute('name'),
-        type: htmlEl.getAttribute('type'),
         role: htmlEl.getAttribute('role') || htmlEl.tagName.toLowerCase(),
         ariaLabel: htmlEl.getAttribute('aria-label'),
-        ariaLabelledBy: htmlEl.getAttribute('aria-labelledby'),
         placeholder: htmlEl.getAttribute('placeholder'),
         title: htmlEl.getAttribute('title'),
         alt: htmlEl.getAttribute('alt'),
-        testId: htmlEl.getAttribute('data-testid') || htmlEl.getAttribute('data-test-id') || htmlEl.getAttribute('data-cy'),
-        text: htmlEl.textContent?.trim().slice(0, 100) || null,
+        testId:
+          htmlEl.getAttribute('data-testid') ||
+          htmlEl.getAttribute('data-test-id') ||
+          htmlEl.getAttribute('data-cy'),
         innerText: htmlEl.innerText?.trim().slice(0, 100) || null,
         tagName: htmlEl.tagName.toLowerCase(),
-        className: htmlEl.className || null,
-        href: htmlEl.getAttribute('href'),
-        value: (htmlEl as HTMLInputElement).value || null,
-        // Generate a CSS path
         cssPath: getCssPath(htmlEl),
-        // Generate an XPath
         xpath: getXPath(htmlEl),
       };
 
@@ -318,91 +464,65 @@ export class SmartLocator {
       }
     });
 
-    // Build strategies ordered by reliability
-
-    // 1. data-testid (most stable — explicitly set for testing)
+    // Build auto strategies — weight 0-95 (always below user weight=100)
     if (attrs.testId) {
-      strategies.push({ type: 'testId', value: attrs.testId, confidence: 0.95 });
+      strategies.push({ type: 'testId', value: attrs.testId, weight: 95, source: 'auto' });
     }
-
-    // 2. Role + accessible name (semantic, resilient to DOM changes)
     if (attrs.ariaLabel) {
       strategies.push({
         type: 'role',
         value: attrs.role,
         options: { name: attrs.ariaLabel },
-        confidence: 0.90,
+        weight: 90,
+        source: 'auto',
       });
+      strategies.push({ type: 'label', value: attrs.ariaLabel, weight: 88, source: 'auto' });
     }
-
-    // 3. Label (for form inputs)
-    if (attrs.ariaLabel) {
-      strategies.push({ type: 'label', value: attrs.ariaLabel, confidence: 0.88 });
-    }
-
-    // 4. Placeholder
     if (attrs.placeholder) {
-      strategies.push({ type: 'placeholder', value: attrs.placeholder, confidence: 0.85 });
+      strategies.push({ type: 'placeholder', value: attrs.placeholder, weight: 85, source: 'auto' });
     }
-
-    // 5. ID (stable if not auto-generated)
     if (attrs.id && !this.looksAutoGenerated(attrs.id)) {
-      strategies.push({ type: 'id', value: attrs.id, confidence: 0.85 });
+      strategies.push({ type: 'id', value: attrs.id, weight: 85, source: 'auto' });
     } else if (attrs.id) {
-      strategies.push({ type: 'id', value: attrs.id, confidence: 0.40 });
+      strategies.push({ type: 'id', value: attrs.id, weight: 40, source: 'auto' });
     }
-
-    // 6. Title attribute
     if (attrs.title) {
-      strategies.push({ type: 'title', value: attrs.title, confidence: 0.80 });
+      strategies.push({ type: 'title', value: attrs.title, weight: 80, source: 'auto' });
     }
-
-    // 7. Alt text (for images)
     if (attrs.alt) {
-      strategies.push({ type: 'altText', value: attrs.alt, confidence: 0.80 });
+      strategies.push({ type: 'altText', value: attrs.alt, weight: 80, source: 'auto' });
     }
-
-    // 8. Name attribute (for form elements)
     if (attrs.name) {
-      strategies.push({ type: 'name', value: attrs.name, confidence: 0.75 });
+      strategies.push({ type: 'name', value: attrs.name, weight: 75, source: 'auto' });
     }
-
-    // 9. Text content (visible text — can change with i18n)
     if (attrs.innerText && attrs.innerText.length <= 50) {
-      strategies.push({ type: 'text', value: attrs.innerText, confidence: 0.70 });
-    }
-
-    // 10. Role + text (for buttons/links without aria-label)
-    if (!attrs.ariaLabel && attrs.innerText && attrs.innerText.length <= 50) {
+      strategies.push({ type: 'text', value: attrs.innerText, weight: 70, source: 'auto' });
       const buttonRoles = ['button', 'link', 'a', 'menuitem', 'tab'];
-      if (buttonRoles.includes(attrs.role) || buttonRoles.includes(attrs.tagName)) {
+      if (
+        !attrs.ariaLabel &&
+        (buttonRoles.includes(attrs.role) || buttonRoles.includes(attrs.tagName))
+      ) {
         strategies.push({
           type: 'role',
           value: attrs.tagName === 'a' ? 'link' : attrs.role,
           options: { name: attrs.innerText },
-          confidence: 0.72,
+          weight: 72,
+          source: 'auto',
         });
       }
     }
-
-    // 11. CSS selector (fragile but always available)
     if (attrs.cssPath) {
-      strategies.push({ type: 'css', value: attrs.cssPath, confidence: 0.30 });
+      strategies.push({ type: 'css', value: attrs.cssPath, weight: 30, source: 'auto' });
     }
-
-    // 12. XPath (most fragile — last resort)
     if (attrs.xpath) {
-      strategies.push({ type: 'xpath', value: attrs.xpath, confidence: 0.20 });
+      strategies.push({ type: 'xpath', value: attrs.xpath, weight: 20, source: 'auto' });
     }
 
     return strategies;
   }
 
-  // ─── Strategy to Locator Conversion ─────────────────────────────────────
+  // ─── Internal: Strategy to Locator ──────────────────────────────────────
 
-  /**
-   * Convert a stored strategy back into a Playwright Locator.
-   */
   private strategyToLocator(strategy: LocatorStrategy): Locator {
     switch (strategy.type) {
       case 'testId':
@@ -432,11 +552,8 @@ export class SmartLocator {
     }
   }
 
-  // ─── Store Persistence ──────────────────────────────────────────────────
+  // ─── Internal: Persistence ──────────────────────────────────────────────
 
-  /**
-   * Load stored fingerprints from disk.
-   */
   private loadStore(): void {
     const storePath = path.join(this.options.storeDir, 'locators.json');
     if (!fs.existsSync(storePath)) return;
@@ -446,53 +563,33 @@ export class SmartLocator {
       const data = JSON.parse(content) as Record<string, ElementFingerprint>;
       this.fingerprints = new Map(Object.entries(data));
     } catch {
-      // Corrupted store — start fresh
       this.fingerprints = new Map();
     }
   }
 
-  /**
-   * Save fingerprints to disk.
-   */
   private saveStore(): void {
     if (!fs.existsSync(this.options.storeDir)) {
       fs.mkdirSync(this.options.storeDir, { recursive: true });
     }
-
     const storePath = path.join(this.options.storeDir, 'locators.json');
     const data = Object.fromEntries(this.fingerprints);
     fs.writeFileSync(storePath, JSON.stringify(data, null, 2));
   }
 
-  // ─── Helpers ────────────────────────────────────────────────────────────
+  // ─── Internal: Helpers ──────────────────────────────────────────────────
 
-  /**
-   * Promote a working fallback strategy by boosting its confidence.
-   * This makes the healed strategy more likely to be tried first next time.
-   */
   private promoteStrategy(fingerprint: ElementFingerprint, workingIndex: number): void {
     const working = fingerprint.strategies[workingIndex];
-    // Boost confidence of the working strategy slightly
-    working.confidence = Math.min(1.0, working.confidence + 0.05);
-    // Re-sort by confidence
-    fingerprint.strategies.sort((a, b) => b.confidence - a.confidence);
+    working.weight = Math.min(99, working.weight + 5);
+    fingerprint.strategies.sort((a, b) => b.weight - a.weight);
     fingerprint.updatedAt = Date.now();
   }
 
-  /**
-   * Detect if an ID looks auto-generated (contains random hashes, UUIDs, etc.).
-   * Auto-generated IDs are unreliable locators.
-   */
   private looksAutoGenerated(id: string): boolean {
-    // Contains long hex sequences (e.g. "el-a3f2b1c4")
     if (/[a-f0-9]{8,}/i.test(id)) return true;
-    // Contains UUID-like patterns
     if (/[a-f0-9]{4}-[a-f0-9]{4}/i.test(id)) return true;
-    // Starts with common framework prefixes + numbers (e.g. "react-123", "ng-45")
     if (/^(react|ng|ember|vue|svelte|radix|mui|chakra)[-_]?\d+/i.test(id)) return true;
-    // Contains only numbers after a colon or dash (e.g. ":r1:", "el-42")
     if (/[:_-]\w?\d{2,}$/.test(id)) return true;
-    // Very short random-looking IDs
     if (/^[a-z]{1,2}\d{3,}$/i.test(id)) return true;
     return false;
   }

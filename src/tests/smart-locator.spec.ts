@@ -172,23 +172,21 @@ test.describe('SmartLocator', () => {
 
     const smart = new SmartLocator(page, { storeDir: LOCATOR_STORE, verbose: false });
 
-    // The search button has role, aria-label, and text
     const searchBtn = page.getByRole('button', { name: 'Search' });
     const fingerprint = await smart.register('search-btn', searchBtn);
 
-    // Should have multiple strategy types
-    const types = new Set(fingerprint.strategies.map((s) => s.type));
-    expect(types.size).toBeGreaterThanOrEqual(2);
+    // Should have user strategy + auto strategies
+    const autoStrategies = fingerprint.strategies.filter((s) => s.source === 'auto');
+    expect(autoStrategies.length).toBeGreaterThanOrEqual(2);
 
-    // Strategies should be sorted by confidence (highest first)
+    // Strategies should be sorted by weight (highest first)
     for (let i = 1; i < fingerprint.strategies.length; i++) {
-      expect(fingerprint.strategies[i].confidence)
-        .toBeLessThanOrEqual(fingerprint.strategies[i - 1].confidence);
+      expect(fingerprint.strategies[i].weight)
+        .toBeLessThanOrEqual(fingerprint.strategies[i - 1].weight);
     }
   });
 
   test('should detect auto-generated IDs and rank them low', async ({ page }) => {
-    // Create a page with an auto-generated-looking ID (hex sequence)
     await page.setContent(`
       <button id="el-a3f2b1c4d5e6" data-testid="submit-btn">Submit</button>
     `);
@@ -197,18 +195,18 @@ test.describe('SmartLocator', () => {
     const btn = page.locator('button');
     const fingerprint = await smart.register('auto-id-test', btn);
 
-    // Find the ID strategy
-    const idStrategy = fingerprint.strategies.find((s) => s.type === 'id');
-    const testIdStrategy = fingerprint.strategies.find((s) => s.type === 'testId');
+    // Find the auto-extracted ID strategy
+    const idStrategy = fingerprint.strategies.find((s) => s.type === 'id' && s.source === 'auto');
+    const testIdStrategy = fingerprint.strategies.find((s) => s.type === 'testId' && s.source === 'auto');
 
-    // Auto-generated ID should have low confidence
+    // Auto-generated ID should have low weight
     if (idStrategy) {
-      expect(idStrategy.confidence).toBeLessThan(0.5);
+      expect(idStrategy.weight).toBeLessThan(50);
     }
 
-    // data-testid should have high confidence
+    // data-testid should have high weight
     expect(testIdStrategy).toBeDefined();
-    expect(testIdStrategy!.confidence).toBeGreaterThanOrEqual(0.9);
+    expect(testIdStrategy!.weight).toBeGreaterThanOrEqual(90);
   });
 
   test('should refresh fingerprint with updated strategies', async ({ page }) => {
