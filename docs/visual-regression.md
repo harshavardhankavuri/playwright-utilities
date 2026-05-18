@@ -39,16 +39,23 @@ It improves on Playwright's built-in `toHaveScreenshot()` in five ways:
 __snapshots__/
   login.spec.ts/              ← subfolder per spec file
     login-page/               ← subfolder per snapshot name
-      baseline-1.png
-      baseline-2.png
-      baseline-3.png
-      baseline-4.png
+      win32/                  ← per-platform isolation
+        baseline-1.png
+        baseline-2.png
+      linux/
+        baseline-1.png
+      darwin/
+        baseline-1.png
     submit-button/
-      baseline-1.png
+      linux/
+        baseline-1.png
   inventory.spec.ts/
     product-grid/
-      baseline-1.png
+      win32/
+        baseline-1.png
 ```
+
+Per-platform folders prevent false positives from font rendering and image decoder differences across Windows / Linux / macOS. The platform is auto-detected from `process.platform`. Override with the `VR_PLATFORM` env var if you need to force a specific bucket (e.g. running tests in a Docker container that should reuse the host's baselines).
 
 ### Behavior
 
@@ -209,3 +216,17 @@ if (!result.passed) {
 - Run `UPDATE_SNAPSHOTS=true` only on a clean, known-good state. Review the new baseline before committing.
 - Commit the `__snapshots__/` directory to version control so CI has baselines.
 - For raw image-vs-image diffing without baseline management, use [`ScreenshotComparator`](screenshot-comparator.md) directly — it's the engine `VisualRegression` is built on.
+
+## Generating Baselines for CI
+
+Visual baselines are platform-specific because fonts, image decoders, and color profiles differ between Windows, Linux, and macOS. Each platform gets its own folder under the snapshot name.
+
+To generate Linux baselines for GitHub Actions CI without leaving Windows:
+
+1. Push your code to a branch on GitHub.
+2. Go to **Actions → Playwright Tests → Run workflow**.
+3. Set `update_snapshots = true` and run.
+4. The job runs on `ubuntu-latest`, captures fresh baselines, and pushes them back to your branch with a `[skip ci]` commit.
+5. Pull the changes locally — your repo now has both `win32/` and `linux/` baselines.
+
+For macOS baselines, run the same flow on a self-hosted macOS runner or set `VR_PLATFORM=darwin` and capture on a macOS dev machine.

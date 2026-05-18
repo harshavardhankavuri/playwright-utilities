@@ -309,12 +309,27 @@ export class VisualRegression {
   // ─── Baseline Storage ───────────────────────────────────────────────────
 
   /**
-   * Directory structure: __snapshots__/<spec-file>/<snapshot-name>/
+   * Directory structure: __snapshots__/<spec-file>/<snapshot-name>/<platform>/
+   *
+   * Per-platform isolation prevents cross-platform false positives caused by
+   * font rendering, image decoders, and color profiles differing between
+   * Windows / Linux / macOS. Mirrors Playwright's built-in toHaveScreenshot()
+   * which appends -<platform>.png to baseline filenames.
    */
   private resolveDir(name: string, testFilePath?: string): string {
-    if (!testFilePath) return path.join(this.snapshotsDir, name);
+    const platform = this.platformDirName();
+    if (!testFilePath) return path.join(this.snapshotsDir, name, platform);
     const specName = path.basename(testFilePath);
-    return path.join(this.snapshotsDir, specName, name);
+    return path.join(this.snapshotsDir, specName, name, platform);
+  }
+
+  /**
+   * Folder name representing the current platform.
+   * Examples: 'linux', 'darwin', 'win32'.
+   * Override via VR_PLATFORM env var if you need to force a specific bucket.
+   */
+  private platformDirName(): string {
+    return process.env.VR_PLATFORM || process.platform;
   }
 
   private loadBaselines(dir: string): { name: string; buffer: Buffer }[] {

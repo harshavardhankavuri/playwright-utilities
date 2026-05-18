@@ -66,6 +66,14 @@ on:
         options:
           - full
           - single
+      update_snapshots:
+        description: 'Capture/update visual baselines and commit them back'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
       xray_enabled:
         description: 'Push results to X-Ray'
         required: false
@@ -85,6 +93,8 @@ jobs:
     name: Run Playwright Tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: write   # Required to push updated baselines back when update_snapshots=true
 
     strategy:
       fail-fast: false
@@ -95,6 +105,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          # Full history + write token so the auto-commit step can push baseline updates
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -140,6 +154,7 @@ jobs:
 
           npx playwright test $ARGS
         env:
+          UPDATE_SNAPSHOTS: ${{ github.event.inputs.update_snapshots || 'false' }}
           XRAY_ENABLED: ${{ github.event.inputs.xray_enabled || 'false' }}
           XRAY_FEATURE_UPDATE_STATUS: ${{ github.event.inputs.xray_enabled || 'false' }}
           JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
@@ -162,6 +177,19 @@ jobs:
 
           # Also generate full Allure report for detailed debugging
           npx allure generate allure-results --clean -o reports/allure-full
+
+      - name: Commit updated baselines
+        if: ${{ always() && github.event.inputs.update_snapshots == 'true' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add __snapshots__
+          if git diff --cached --quiet; then
+            echo "No baseline changes to commit."
+          else
+            git commit -m "chore: update visual baselines (linux) [skip ci]"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
 
       - name: Upload Allure single-file report
         if: always()

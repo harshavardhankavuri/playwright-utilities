@@ -17,8 +17,9 @@ npm run report:allure:single      # Generate single-file Allure report
 ├── __snapshots__/                # Visual baselines (committed to repo for CI)
 │   └── <spec-file>/
 │       └── <snapshot-name>/
-│           ├── baseline-1.png
-│           └── baseline-2.png
+│           └── <platform>/       # win32, linux, or darwin
+│               ├── baseline-1.png
+│               └── baseline-2.png
 ├── env/                          # Environment configs
 │   ├── .env.dev
 │   └── .env.qa
@@ -127,9 +128,9 @@ const result = await visual.assertPage(page, {
 // Update baselines: UPDATE_SNAPSHOTS=true npx playwright test
 ```
 
-Baselines stored in `__snapshots__/<spec-file>/<name>/baseline-N.png` and committed to git for CI.
+Baselines stored in `__snapshots__/<spec-file>/<name>/<platform>/baseline-N.png` and committed to git for CI. The `<platform>` segment (`win32`, `linux`, `darwin`) isolates baselines per OS so font and rendering differences don't cause cross-platform false positives.
 
-For raw image-to-image diffing without baseline management, use `ScreenshotComparator` directly — it's the low-level engine `VisualRegression` builds on.
+**Generating Linux baselines for CI:** trigger the GitHub Actions workflow manually with `update_snapshots=true` — it will capture baselines on `ubuntu-latest` and push them back to the branch automatically.
 
 ### API Client
 
