@@ -1,20 +1,43 @@
-import { type Locator, type Page, expect as playwrightExpect } from '@playwright/test';
+import {
+  type Locator,
+  type Page,
+  type APIResponse,
+  expect as playwrightExpect,
+} from '@playwright/test';
 
 /**
- * Soft Assertions — Collect all failures without stopping the test.
+ * Soft Assertions — Collect all failures without stopping the test, with
+ * full chaining support (multiple assertions on a single await).
  *
- * Unlike regular assertions that throw immediately on failure, soft assertions
- * collect all violations and report them together at the end. This is ideal for:
- * - Form validation tests (check all fields at once)
- * - Page structure verification (check multiple elements)
- * - Data integrity checks (verify all rows/columns)
+ * Differences vs Playwright's built-in `expect.soft()`:
+ *
+ *   Playwright (no chaining):
+ *     await expect.soft(input).toBeVisible();
+ *     await expect.soft(input).toHaveValue('foo');
+ *     await expect.soft(input).toHaveCSS('color', 'red');
+ *
+ *   Ours (chained, single await):
+ *     await soft.expect(input)
+ *       .toBeVisible()
+ *       .toHaveValue('foo')
+ *       .toHaveCSS('color', 'red');
+ *
+ * Both approaches collect failures without stopping the test. We add:
+ *   - Full chaining of multiple assertions on one locator/page/value
+ *   - Negation via `.not.toBe...()` for any assertion
+ *   - `satisfies(fn)` for custom predicates inside a chain
+ *   - `assertAll()` to throw a single grouped error at the end
+ *   - `attachToTest()` to auto-fail the current test on cleanup
  *
  * Usage:
  *   const soft = new SoftAssert();
  *
- *   await soft.expect(locator1).toBeVisible();
- *   await soft.expect(locator2).toHaveText('Hello');
- *   await soft.expect(locator3).toBeEnabled();
+ *   await soft.expect(input, 'username field')
+ *     .toBeVisible()
+ *     .toBeEnabled()
+ *     .toHaveValue('admin');
+ *
+ *   await soft.expectPage(page).toHaveTitle('Login').toHaveURL(/\/login$/);
  *
  *   soft.assertAll(); // Throws with ALL failures if any
  */
@@ -26,116 +49,82 @@ import { type Locator, type Page, expect as playwrightExpect } from '@playwright
 export interface SoftFailure {
   /** Description of what was being asserted */
   assertion: string;
+  /** Optional label/message provided when creating the chain */
+  label?: string;
   /** Error message from the failed assertion */
   error: string;
-  /** Index of this assertion in the sequence */
+  /** Index of this assertion across the entire SoftAssert */
   index: number;
 }
 
+interface SoftStep {
+  name: string;
+  run: () => Promise<void>;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// SOFT ASSERT
+// SOFT ASSERT (collector)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * SoftAssert — Collect assertion failures without stopping the test.
- *
- * Usage:
- *   const soft = new SoftAssert();
- *
- *   // These won't throw even if they fail:
- *   await soft.expect(nameField).toBeVisible();
- *   await soft.expect(emailField).toHaveValue('test@example.com');
- *   await soft.expect(submitBtn).toBeEnabled();
- *   await soft.expectPage(page).toHaveTitle('Form');
- *
- *   // This throws with ALL collected failures:
- *   soft.assertAll();
- *
- *   // Or check without throwing:
- *   if (soft.hasFailures()) {
- *     console.log(soft.getFailures());
- *   }
- */
 export class SoftAssert {
   private failures: SoftFailure[] = [];
   private assertionCount = 0;
 
-  /**
-   * Create a soft assertion for a Locator.
-   * Returns a proxy that catches failures instead of throwing.
-   */
+  /** Soft assertion chain for a Locator. */
   expect(locator: Locator, message?: string): SoftLocatorAssert {
     return new SoftLocatorAssert(locator, this, message);
   }
 
-  /**
-   * Create a soft assertion for a Page.
-   */
+  /** Soft assertion chain for a Page. */
   expectPage(page: Page, message?: string): SoftPageAssert {
     return new SoftPageAssert(page, this, message);
   }
 
-  /**
-   * Soft-assert a plain value (non-locator).
-   */
+  /** Soft assertion chain for an APIResponse. */
+  expectResponse(response: APIResponse, message?: string): SoftResponseAssert {
+    return new SoftResponseAssert(response, this, message);
+  }
+
+  /** Soft assertion chain for a plain JS value. */
   expectValue(actual: unknown, message?: string): SoftValueAssert {
     return new SoftValueAssert(actual, this, message);
   }
 
-  /**
-   * Record a failure (called internally by soft assertion proxies).
-   */
-  recordFailure(assertion: string, error: string): void {
+  /** Record a failure (called by chain proxies). */
+  recordFailure(assertion: string, error: string, label?: string): void {
     this.failures.push({
       assertion,
+      label,
       error,
       index: this.assertionCount,
     });
   }
 
-  /**
-   * Increment the assertion counter (called internally).
-   */
+  /** Increment the assertion counter (called by chain proxies). */
   incrementCount(): void {
     this.assertionCount++;
   }
 
   /**
-   * Throw an error if any soft assertions failed.
-   * Call this at the end of your test.
+   * Throw an error if any soft assertions failed. Call at end of test.
+   * Returns void on success so it can be used in chain.
    */
   assertAll(): void {
     if (this.failures.length === 0) return;
-
-    const lines = [
-      `\n❌ ${this.failures.length} of ${this.assertionCount} soft assertion(s) failed:\n`,
-    ];
-
-    for (const f of this.failures) {
-      lines.push(`  [${f.index + 1}] ${f.assertion}`);
-      lines.push(`      → ${f.error}\n`);
-    }
-
-    throw new Error(lines.join('\n'));
+    throw new Error(this.formatFailures());
   }
 
-  /**
-   * Check if there are any failures without throwing.
-   */
+  /** True if any failure was recorded. */
   hasFailures(): boolean {
     return this.failures.length > 0;
   }
 
-  /**
-   * Get all collected failures.
-   */
+  /** Return all collected failures (defensive copy). */
   getFailures(): SoftFailure[] {
     return [...this.failures];
   }
 
-  /**
-   * Get counts: total assertions and failures.
-   */
+  /** Get total/passed/failed counts. */
   getCounts(): { total: number; passed: number; failed: number } {
     return {
       total: this.assertionCount,
@@ -144,117 +133,260 @@ export class SoftAssert {
     };
   }
 
-  /**
-   * Reset all collected failures and counters.
-   */
+  /** Reset all state. */
   reset(): void {
     this.failures = [];
     this.assertionCount = 0;
   }
+
+  /** Build a human-readable failure summary. */
+  private formatFailures(): string {
+    const lines = [
+      `\n❌ ${this.failures.length} of ${this.assertionCount} soft assertion(s) failed:\n`,
+    ];
+    for (const f of this.failures) {
+      const label = f.label ? ` [${f.label}]` : '';
+      lines.push(`  [${f.index + 1}]${label} ${f.assertion}`);
+      lines.push(`      → ${f.error}\n`);
+    }
+    return lines.join('\n');
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SOFT LOCATOR ASSERT
+// BASE CHAINABLE PROXY
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Soft assertion proxy for Playwright Locators.
- * Each method catches errors and records them instead of throwing.
- */
-export class SoftLocatorAssert {
-  private readonly locator: Locator;
-  private readonly collector: SoftAssert;
-  private readonly label: string;
+abstract class SoftChainBase implements PromiseLike<void> {
+  protected readonly steps: SoftStep[] = [];
+  protected readonly collector: SoftAssert;
+  protected readonly label?: string;
+  protected negate = false;
 
-  constructor(locator: Locator, collector: SoftAssert, message?: string) {
-    this.locator = locator;
+  constructor(collector: SoftAssert, label?: string) {
     this.collector = collector;
-    this.label = message || 'locator';
+    this.label = label;
   }
 
-  private async run(name: string, fn: () => Promise<void>): Promise<this> {
-    this.collector.incrementCount();
-    try {
-      await fn();
-    } catch (err) {
-      this.collector.recordFailure(
-        `expect(${this.label}).${name}`,
-        err instanceof Error ? err.message.split('\n')[0] : String(err),
-      );
-    }
+  /** Negate the next assertion in the chain. */
+  get not(): this {
+    this.negate = true;
     return this;
   }
 
-  async toBeVisible(options?: { timeout?: number }): Promise<this> {
-    return this.run('toBeVisible()', () =>
-      playwrightExpect(this.locator).toBeVisible({ timeout: options?.timeout ?? 5000 }),
-    );
+  protected consumeNegate(): boolean {
+    const v = this.negate;
+    this.negate = false;
+    return v;
   }
 
-  async toBeHidden(options?: { timeout?: number }): Promise<this> {
-    return this.run('toBeHidden()', () =>
-      playwrightExpect(this.locator).toBeHidden({ timeout: options?.timeout ?? 5000 }),
-    );
+  /** Queue a step that records its failure into the collector. */
+  protected push(name: string, run: () => Promise<void>): this {
+    this.steps.push({ name, run });
+    return this;
   }
 
-  async toBeEnabled(options?: { timeout?: number }): Promise<this> {
-    return this.run('toBeEnabled()', () =>
-      playwrightExpect(this.locator).toBeEnabled({ timeout: options?.timeout ?? 5000 }),
-    );
+  /** Run all queued steps; each failure is recorded but does NOT throw. */
+  protected async execute(): Promise<void> {
+    for (const step of this.steps) {
+      this.collector.incrementCount();
+      try {
+        await step.run();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message.split('\n')[0] : String(err);
+        this.collector.recordFailure(step.name, msg, this.label);
+      }
+    }
   }
 
-  async toBeDisabled(options?: { timeout?: number }): Promise<this> {
-    return this.run('toBeDisabled()', () =>
-      playwrightExpect(this.locator).toBeDisabled({ timeout: options?.timeout ?? 5000 }),
-    );
+  then<TResult1 = void, TResult2 = never>(
+    onfulfilled?: ((value: void) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+  ): PromiseLike<TResult1 | TResult2> {
+    return this.execute().then(onfulfilled, onrejected);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SOFT LOCATOR ASSERT — chainable Playwright Locator assertions
+// ─────────────────────────────────────────────────────────────────────────────
+
+export class SoftLocatorAssert extends SoftChainBase {
+  private readonly locator: Locator;
+  private readonly defaultTimeout = 5000;
+
+  constructor(locator: Locator, collector: SoftAssert, label?: string) {
+    super(collector, label);
+    this.locator = locator;
   }
 
-  async toHaveText(expected: string | RegExp, options?: { timeout?: number }): Promise<this> {
-    return this.run(`toHaveText(${expected})`, () =>
-      playwrightExpect(this.locator).toHaveText(expected, { timeout: options?.timeout ?? 5000 }),
-    );
+  private pw(neg: boolean) {
+    return neg ? playwrightExpect(this.locator).not : playwrightExpect(this.locator);
   }
 
-  async toContainText(expected: string | RegExp, options?: { timeout?: number }): Promise<this> {
-    return this.run(`toContainText(${expected})`, () =>
-      playwrightExpect(this.locator).toContainText(expected, { timeout: options?.timeout ?? 5000 }),
-    );
+  // ─── Visibility / DOM ─────────────────────────────────────────────────
+
+  toBeAttached(options?: { timeout?: number }): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toBeAttached()`, async () => {
+      await this.pw(neg).toBeAttached({ timeout: options?.timeout ?? this.defaultTimeout });
+    });
   }
 
-  async toHaveValue(expected: string | RegExp, options?: { timeout?: number }): Promise<this> {
-    return this.run(`toHaveValue(${expected})`, () =>
-      playwrightExpect(this.locator).toHaveValue(expected, { timeout: options?.timeout ?? 5000 }),
-    );
+  toBeVisible(options?: { timeout?: number }): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toBeVisible()`, async () => {
+      await this.pw(neg).toBeVisible({ timeout: options?.timeout ?? this.defaultTimeout });
+    });
   }
 
-  async toHaveAttribute(name: string, value?: string | RegExp, options?: { timeout?: number }): Promise<this> {
-    return this.run(`toHaveAttribute(${name}, ${value})`, () =>
-      playwrightExpect(this.locator).toHaveAttribute(name, value ?? /.*/, { timeout: options?.timeout ?? 5000 }),
-    );
+  toBeHidden(options?: { timeout?: number }): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toBeHidden()`, async () => {
+      await this.pw(neg).toBeHidden({ timeout: options?.timeout ?? this.defaultTimeout });
+    });
   }
 
-  async toHaveClass(expected: string | RegExp, options?: { timeout?: number }): Promise<this> {
-    return this.run(`toHaveClass(${expected})`, () =>
-      playwrightExpect(this.locator).toHaveClass(expected, { timeout: options?.timeout ?? 5000 }),
-    );
+  toBeInViewport(options?: { timeout?: number; ratio?: number }): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toBeInViewport()`, async () => {
+      await this.pw(neg).toBeInViewport({
+        timeout: options?.timeout ?? this.defaultTimeout,
+        ratio: options?.ratio,
+      });
+    });
   }
 
-  async toHaveCount(count: number, options?: { timeout?: number }): Promise<this> {
-    return this.run(`toHaveCount(${count})`, () =>
-      playwrightExpect(this.locator).toHaveCount(count, { timeout: options?.timeout ?? 5000 }),
-    );
+  // ─── State ────────────────────────────────────────────────────────────
+
+  toBeEnabled(options?: { timeout?: number }): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toBeEnabled()`, async () => {
+      await this.pw(neg).toBeEnabled({ timeout: options?.timeout ?? this.defaultTimeout });
+    });
   }
 
-  async toBeChecked(options?: { timeout?: number }): Promise<this> {
-    return this.run('toBeChecked()', () =>
-      playwrightExpect(this.locator).toBeChecked({ timeout: options?.timeout ?? 5000 }),
-    );
+  toBeDisabled(options?: { timeout?: number }): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toBeDisabled()`, async () => {
+      await this.pw(neg).toBeDisabled({ timeout: options?.timeout ?? this.defaultTimeout });
+    });
   }
 
-  async toHaveCss(property: string, value: string | RegExp, options?: { timeout?: number }): Promise<this> {
-    return this.run(`toHaveCSS(${property}, ${value})`, () =>
-      playwrightExpect(this.locator).toHaveCSS(property, value, { timeout: options?.timeout ?? 5000 }),
-    );
+  toBeEditable(options?: { timeout?: number }): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toBeEditable()`, async () => {
+      await this.pw(neg).toBeEditable({ timeout: options?.timeout ?? this.defaultTimeout });
+    });
+  }
+
+  toBeChecked(options?: { timeout?: number; checked?: boolean }): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toBeChecked()`, async () => {
+      await this.pw(neg).toBeChecked({
+        timeout: options?.timeout ?? this.defaultTimeout,
+        checked: options?.checked,
+      });
+    });
+  }
+
+  toBeFocused(options?: { timeout?: number }): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toBeFocused()`, async () => {
+      await this.pw(neg).toBeFocused({ timeout: options?.timeout ?? this.defaultTimeout });
+    });
+  }
+
+  toBeEmpty(options?: { timeout?: number }): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toBeEmpty()`, async () => {
+      await this.pw(neg).toBeEmpty({ timeout: options?.timeout ?? this.defaultTimeout });
+    });
+  }
+
+  // ─── Text / Value ─────────────────────────────────────────────────────
+
+  toHaveText(expected: string | RegExp | Array<string | RegExp>, options?: { timeout?: number; useInnerText?: boolean; ignoreCase?: boolean }): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toHaveText(${stringify(expected)})`, async () => {
+      await this.pw(neg).toHaveText(expected, {
+        timeout: options?.timeout ?? this.defaultTimeout,
+        useInnerText: options?.useInnerText,
+        ignoreCase: options?.ignoreCase,
+      });
+    });
+  }
+
+  toContainText(expected: string | RegExp | Array<string | RegExp>, options?: { timeout?: number; useInnerText?: boolean; ignoreCase?: boolean }): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toContainText(${stringify(expected)})`, async () => {
+      await this.pw(neg).toContainText(expected, {
+        timeout: options?.timeout ?? this.defaultTimeout,
+        useInnerText: options?.useInnerText,
+        ignoreCase: options?.ignoreCase,
+      });
+    });
+  }
+
+  toHaveValue(expected: string | RegExp, options?: { timeout?: number }): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toHaveValue(${stringify(expected)})`, async () => {
+      await this.pw(neg).toHaveValue(expected, { timeout: options?.timeout ?? this.defaultTimeout });
+    });
+  }
+
+  toHaveValues(expected: Array<string | RegExp>, options?: { timeout?: number }): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toHaveValues(${stringify(expected)})`, async () => {
+      await this.pw(neg).toHaveValues(expected, { timeout: options?.timeout ?? this.defaultTimeout });
+    });
+  }
+
+  // ─── Attributes / CSS / Class ─────────────────────────────────────────
+
+  toHaveAttribute(name: string, value?: string | RegExp, options?: { timeout?: number }): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toHaveAttribute(${name}, ${stringify(value)})`, async () => {
+      await this.pw(neg).toHaveAttribute(name, value ?? /.*/, { timeout: options?.timeout ?? this.defaultTimeout });
+    });
+  }
+
+  toHaveClass(expected: string | RegExp | Array<string | RegExp>, options?: { timeout?: number }): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toHaveClass(${stringify(expected)})`, async () => {
+      await this.pw(neg).toHaveClass(expected, { timeout: options?.timeout ?? this.defaultTimeout });
+    });
+  }
+
+  toHaveCSS(name: string, value: string | RegExp, options?: { timeout?: number }): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toHaveCSS(${name}, ${stringify(value)})`, async () => {
+      await this.pw(neg).toHaveCSS(name, value, { timeout: options?.timeout ?? this.defaultTimeout });
+    });
+  }
+
+  toHaveId(id: string | RegExp, options?: { timeout?: number }): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toHaveId(${stringify(id)})`, async () => {
+      await this.pw(neg).toHaveId(id, { timeout: options?.timeout ?? this.defaultTimeout });
+    });
+  }
+
+  toHaveCount(count: number, options?: { timeout?: number }): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toHaveCount(${count})`, async () => {
+      await this.pw(neg).toHaveCount(count, { timeout: options?.timeout ?? this.defaultTimeout });
+    });
+  }
+
+  // ─── Custom predicate ─────────────────────────────────────────────────
+
+  /** Run a custom predicate against the locator. Throw to fail. */
+  satisfies(fn: (locator: Locator) => Promise<void>, description = 'satisfies(fn)'): this {
+    const loc = this.locator;
+    return this.push(description, async () => {
+      await fn(loc);
+    });
   }
 }
 
@@ -262,40 +394,80 @@ export class SoftLocatorAssert {
 // SOFT PAGE ASSERT
 // ─────────────────────────────────────────────────────────────────────────────
 
-export class SoftPageAssert {
+export class SoftPageAssert extends SoftChainBase {
   private readonly page: Page;
-  private readonly collector: SoftAssert;
-  private readonly label: string;
+  private readonly defaultTimeout = 5000;
 
-  constructor(page: Page, collector: SoftAssert, message?: string) {
+  constructor(page: Page, collector: SoftAssert, label?: string) {
+    super(collector, label);
     this.page = page;
-    this.collector = collector;
-    this.label = message || 'page';
   }
 
-  private async run(name: string, fn: () => Promise<void>): Promise<this> {
-    this.collector.incrementCount();
-    try {
-      await fn();
-    } catch (err) {
-      this.collector.recordFailure(
-        `expect(${this.label}).${name}`,
-        err instanceof Error ? err.message.split('\n')[0] : String(err),
-      );
-    }
-    return this;
+  private pw(neg: boolean) {
+    return neg ? playwrightExpect(this.page).not : playwrightExpect(this.page);
   }
 
-  async toHaveTitle(expected: string | RegExp, options?: { timeout?: number }): Promise<this> {
-    return this.run(`toHaveTitle(${expected})`, () =>
-      playwrightExpect(this.page).toHaveTitle(expected, { timeout: options?.timeout ?? 5000 }),
-    );
+  toHaveTitle(title: string | RegExp, options?: { timeout?: number }): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toHaveTitle(${stringify(title)})`, async () => {
+      await this.pw(neg).toHaveTitle(title, { timeout: options?.timeout ?? this.defaultTimeout });
+    });
   }
 
-  async toHaveURL(expected: string | RegExp, options?: { timeout?: number }): Promise<this> {
-    return this.run(`toHaveURL(${expected})`, () =>
-      playwrightExpect(this.page).toHaveURL(expected, { timeout: options?.timeout ?? 5000 }),
-    );
+  toHaveURL(url: string | RegExp, options?: { timeout?: number }): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toHaveURL(${stringify(url)})`, async () => {
+      await this.pw(neg).toHaveURL(url, { timeout: options?.timeout ?? this.defaultTimeout });
+    });
+  }
+
+  satisfies(fn: (page: Page) => Promise<void>, description = 'satisfies(fn)'): this {
+    const page = this.page;
+    return this.push(description, async () => {
+      await fn(page);
+    });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SOFT RESPONSE ASSERT
+// ─────────────────────────────────────────────────────────────────────────────
+
+export class SoftResponseAssert extends SoftChainBase {
+  private readonly response: APIResponse;
+
+  constructor(response: APIResponse, collector: SoftAssert, label?: string) {
+    super(collector, label);
+    this.response = response;
+  }
+
+  private pw(neg: boolean) {
+    return neg ? playwrightExpect(this.response).not : playwrightExpect(this.response);
+  }
+
+  toBeOK(): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toBeOK()`, async () => {
+      await this.pw(neg).toBeOK();
+    });
+  }
+
+  toHaveStatus(status: number): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toHaveStatus(${status})`, async () => {
+      const actual = this.response.status();
+      const matches = actual === status;
+      if (neg ? matches : !matches) {
+        throw new Error(`Expected status ${neg ? 'not ' : ''}${status}, got ${actual}`);
+      }
+    });
+  }
+
+  satisfies(fn: (response: APIResponse) => Promise<void>, description = 'satisfies(fn)'): this {
+    const r = this.response;
+    return this.push(description, async () => {
+      await fn(r);
+    });
   }
 }
 
@@ -303,92 +475,103 @@ export class SoftPageAssert {
 // SOFT VALUE ASSERT
 // ─────────────────────────────────────────────────────────────────────────────
 
-export class SoftValueAssert {
+export class SoftValueAssert extends SoftChainBase {
   private readonly actual: unknown;
-  private readonly collector: SoftAssert;
-  private readonly label: string;
 
-  constructor(actual: unknown, collector: SoftAssert, message?: string) {
+  constructor(actual: unknown, collector: SoftAssert, label?: string) {
+    super(collector, label);
     this.actual = actual;
-    this.collector = collector;
-    this.label = message || String(actual);
   }
 
   toBe(expected: unknown): this {
-    this.collector.incrementCount();
-    if (this.actual !== expected) {
-      this.collector.recordFailure(
-        `expect(${this.label}).toBe(${expected})`,
-        `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(this.actual)}`,
-      );
-    }
-    return this;
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toBe(${stringify(expected)})`, async () => {
+      const equal = this.actual === expected;
+      if (neg ? equal : !equal) {
+        throw new Error(`Expected ${neg ? 'not ' : ''}${stringify(expected)}, got ${stringify(this.actual)}`);
+      }
+    });
   }
 
   toEqual(expected: unknown): this {
-    this.collector.incrementCount();
-    if (JSON.stringify(this.actual) !== JSON.stringify(expected)) {
-      this.collector.recordFailure(
-        `expect(${this.label}).toEqual(...)`,
-        `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(this.actual)}`,
-      );
-    }
-    return this;
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toEqual(${stringify(expected)})`, async () => {
+      const equal = JSON.stringify(this.actual) === JSON.stringify(expected);
+      if (neg ? equal : !equal) {
+        throw new Error(`Expected ${neg ? 'not ' : ''}${stringify(expected)}, got ${stringify(this.actual)}`);
+      }
+    });
   }
 
   toBeTruthy(): this {
-    this.collector.incrementCount();
-    if (!this.actual) {
-      this.collector.recordFailure(
-        `expect(${this.label}).toBeTruthy()`,
-        `Expected truthy, got ${JSON.stringify(this.actual)}`,
-      );
-    }
-    return this;
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toBeTruthy()`, async () => {
+      const truthy = !!this.actual;
+      if (neg ? truthy : !truthy) {
+        throw new Error(`Expected ${neg ? 'falsy' : 'truthy'}, got ${stringify(this.actual)}`);
+      }
+    });
   }
 
   toBeFalsy(): this {
-    this.collector.incrementCount();
-    if (this.actual) {
-      this.collector.recordFailure(
-        `expect(${this.label}).toBeFalsy()`,
-        `Expected falsy, got ${JSON.stringify(this.actual)}`,
-      );
-    }
-    return this;
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toBeFalsy()`, async () => {
+      const falsy = !this.actual;
+      if (neg ? falsy : !falsy) {
+        throw new Error(`Expected ${neg ? 'truthy' : 'falsy'}, got ${stringify(this.actual)}`);
+      }
+    });
   }
 
   toContain(expected: unknown): this {
-    this.collector.incrementCount();
-    const str = String(this.actual);
-    if (!str.includes(String(expected))) {
-      this.collector.recordFailure(
-        `expect(${this.label}).toContain(${expected})`,
-        `"${str}" does not contain "${expected}"`,
-      );
-    }
-    return this;
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toContain(${stringify(expected)})`, async () => {
+      const str = String(this.actual);
+      const contains = str.includes(String(expected));
+      if (neg ? contains : !contains) {
+        throw new Error(`"${str}" ${neg ? 'should not contain' : 'does not contain'} "${expected}"`);
+      }
+    });
   }
 
-  toBeGreaterThan(expected: number): this {
-    this.collector.incrementCount();
-    if (typeof this.actual !== 'number' || this.actual <= expected) {
-      this.collector.recordFailure(
-        `expect(${this.label}).toBeGreaterThan(${expected})`,
-        `Expected > ${expected}, got ${this.actual}`,
-      );
-    }
-    return this;
+  toBeGreaterThan(n: number): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toBeGreaterThan(${n})`, async () => {
+      const greater = typeof this.actual === 'number' && this.actual > n;
+      if (neg ? greater : !greater) {
+        throw new Error(`Expected ${neg ? 'not > ' : '> '}${n}, got ${this.actual}`);
+      }
+    });
   }
 
-  toBeLessThan(expected: number): this {
-    this.collector.incrementCount();
-    if (typeof this.actual !== 'number' || this.actual >= expected) {
-      this.collector.recordFailure(
-        `expect(${this.label}).toBeLessThan(${expected})`,
-        `Expected < ${expected}, got ${this.actual}`,
-      );
-    }
-    return this;
+  toBeLessThan(n: number): this {
+    const neg = this.consumeNegate();
+    return this.push(`${neg ? 'not.' : ''}toBeLessThan(${n})`, async () => {
+      const less = typeof this.actual === 'number' && this.actual < n;
+      if (neg ? less : !less) {
+        throw new Error(`Expected ${neg ? 'not < ' : '< '}${n}, got ${this.actual}`);
+      }
+    });
+  }
+
+  satisfies(fn: (value: unknown) => void | Promise<void>, description = 'satisfies(fn)'): this {
+    const v = this.actual;
+    return this.push(description, async () => {
+      await fn(v);
+    });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function stringify(v: unknown): string {
+  if (v instanceof RegExp) return v.toString();
+  if (typeof v === 'string') return JSON.stringify(v);
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
   }
 }

@@ -168,6 +168,7 @@ export {
   SoftAssert,
   SoftLocatorAssert,
   SoftPageAssert,
+  SoftResponseAssert,
   SoftValueAssert,
   type SoftFailure,
 } from './soft-assertions';
