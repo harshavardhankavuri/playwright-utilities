@@ -1,15 +1,16 @@
-import { test, expect } from '../main/fixtures';
+import { test as base, expect } from '@playwright/test';
 import { SnapshotManager, DiffSeverity } from '../main/utils';
 import * as fs from 'fs';
 import * as path from 'path';
 
+const test = base;
+
 const SNAPSHOTS_DIR = path.resolve('test-results', 'test-snapshots-' + process.pid);
 
-test.describe('SnapshotManager - Multi-baseline', () => {
+test.describe('SnapshotManager', () => {
   let manager: SnapshotManager;
 
   test.beforeAll(() => {
-    // Clean up test snapshots before running
     if (fs.existsSync(SNAPSHOTS_DIR)) {
       fs.rmSync(SNAPSHOTS_DIR, { recursive: true });
     }
@@ -19,170 +20,150 @@ test.describe('SnapshotManager - Multi-baseline', () => {
     manager = new SnapshotManager({
       snapshotsDir: SNAPSHOTS_DIR,
       diffOutputDir: path.resolve('test-results', 'snapshot-diffs'),
+      maxBaselines: 4,
     });
   });
 
   test('should save first baseline automatically when none exist', async ({ page }) => {
-    await page.goto('https://playwright.dev');
+    await page.goto('https://www.saucedemo.com');
     await page.waitForLoadState('networkidle');
 
-    const result = await manager.assertScreenshot(page, { name: 'auto-save-test' });
+    const result = await manager.assertScreenshot(page, {
+      name: 'auto-save-test',
+      testFilePath: __filename,
+    });
 
     expect(result.isMatch).toBe(true);
     expect(result.summary).toContain('Saved first baseline');
 
-    // Verify file was created
-    const baselines = manager.listBaselines('auto-save-test');
+    // Verify file was created in correct structure
+    const baselines = manager.listBaselines('auto-save-test', __filename);
     expect(baselines).toHaveLength(1);
     expect(baselines[0]).toBe('baseline-1.png');
   });
 
-  test('should match against existing baseline', async ({ page }) => {
-    await page.goto('https://playwright.dev');
+  test('should match against existing baseline on second run', async ({ page }) => {
+    await page.goto('https://www.saucedemo.com');
     await page.waitForLoadState('networkidle');
 
     // First call saves baseline
-    await manager.assertScreenshot(page, { name: 'match-test' });
+    await manager.assertScreenshot(page, { name: 'match-test', testFilePath: __filename });
 
-    // Second call should match it
-    const result = await manager.assertScreenshot(page, { name: 'match-test' });
+    // Second call should compare and match (same page, no changes)
+    const result = await manager.assertScreenshot(page, { name: 'match-test', testFilePath: __filename });
 
     expect(result.isMatch).toBe(true);
     expect(result.matchedBaselineIndex).toBe(0);
     expect(result.matchedBaselineName).toBe('baseline-1.png');
   });
 
-  test('should support multiple baselines and match any', async ({ page }) => {
-    await page.goto('https://playwright.dev');
+  test('should NOT save new baselines on normal runs', async ({ page }) => {
+    await page.goto('https://www.saucedemo.com');
     await page.waitForLoadState('networkidle');
 
-    // Save first baseline (normal state)
-    await page.evaluate(() => {
-      document.querySelectorAll('*').forEach((el) => {
-        (el as HTMLElement).style.animation = 'none';
-        (el as HTMLElement).style.transition = 'none';
+    // First run: saves baseline-1
+    await manager.assertScreenshot(page, { name: 'no-auto-save', testFilePath: __filename });
+
+    // Second run: should NOT create baseline-2
+    await manager.assertScreenshot(page, { name: 'no-auto-save', testFilePath: __filename });
+
+    // Third run: still only 1 baseline
+    await manager.assertScreenshot(page, { name: 'no-auto-save', testFilePath: __filename });
+
+    const baselines = manager.listBaselines('no-auto-save', __filename);
+    expect(baselines).toHaveLength(1); // Only the initial baseline, no extras
+  });
+
+  test('should add new baseline only with updateBaseline flag', async ({ page }) => {
+    await page.goto('https://www.saucedemo.com');
+    await page.waitForLoadState('networkidle');
+
+    // Save first baseline
+    await manager.assertScreenshot(page, { name: 'update-test', testFilePath: __filename });
+    expect(manager.listBaselines('update-test', __filename)).toHaveLength(1);
+
+    // Explicit update adds a second baseline
+    await manager.assertScreenshot(page, {
+      name: 'update-test',
+      testFilePath: __filename,
+      updateBaseline: true,
+    });
+    expect(manager.listBaselines('update-test', __filename)).toHaveLength(2);
+  });
+
+  test('should rotate oldest baseline when at max capacity', async ({ page }) => {
+    await page.goto('https://www.saucedemo.com');
+    await page.waitForLoadState('networkidle');
+
+    // Fill up to maxBaselines (4)
+    for (let i = 0; i < 4; i++) {
+      await manager.assertScreenshot(page, {
+        name: 'rotate-test',
+        testFilePath: __filename,
+        updateBaseline: true,
       });
+    }
+    expect(manager.listBaselines('rotate-test', __filename)).toHaveLength(4);
+
+    // 5th update should rotate out the oldest
+    await manager.assertScreenshot(page, {
+      name: 'rotate-test',
+      testFilePath: __filename,
+      updateBaseline: true,
     });
-    const screenshot1 = await page.screenshot({ animations: 'disabled' });
-    manager.addBaseline('multi-test', screenshot1);
-
-    // Save second baseline (slightly different — e.g. dark mode variant)
-    await page.evaluate(() => {
-      document.body.style.backgroundColor = '#1a1a1a';
-    });
-    const screenshot2 = await page.screenshot({ animations: 'disabled' });
-    manager.addBaseline('multi-test', screenshot2);
-
-    // Verify we have 2 baselines
-    expect(manager.listBaselines('multi-test')).toHaveLength(2);
-
-    // Reset to original state — should match baseline 1
-    await page.evaluate(() => {
-      document.body.style.backgroundColor = '';
-    });
-    const result = await manager.assertScreenshot(page, { name: 'multi-test' });
-
-    expect(result.isMatch).toBe(true);
-    expect(result.matchedBaselineIndex).toBe(0);
-    console.log(result.summary);
+    expect(manager.listBaselines('rotate-test', __filename)).toHaveLength(4); // Still 4, not 5
   });
 
   test('should fail with intelligent analysis when no baseline matches', async ({ page }) => {
-    await page.goto('https://playwright.dev');
+    await page.goto('https://www.saucedemo.com');
     await page.waitForLoadState('networkidle');
 
-    await page.evaluate(() => {
-      document.querySelectorAll('*').forEach((el) => {
-        (el as HTMLElement).style.animation = 'none';
-        (el as HTMLElement).style.transition = 'none';
-      });
-    });
+    // Save a baseline of the login page
+    const loginScreenshot = await page.screenshot({ animations: 'disabled' });
+    manager.addBaseline('fail-test', loginScreenshot, __filename);
 
-    // Save a baseline
-    const baseline = await page.screenshot({ animations: 'disabled' });
-    manager.addBaseline('fail-test', baseline);
+    // Login and take a completely different screenshot
+    await page.fill('[data-test="username"]', 'standard_user');
+    await page.fill('[data-test="password"]', 'secret_sauce');
+    await page.click('[data-test="login-button"]');
+    await page.waitForURL(/inventory/);
 
-    // Make a significant change
-    await page.evaluate(() => {
-      const h1 = document.querySelector('h1');
-      if (h1) {
-        h1.textContent = 'COMPLETELY DIFFERENT TEXT';
-        h1.style.color = 'red';
-        h1.style.fontSize = '80px';
-      }
-    });
-
-    const result = await manager.assertScreenshot(page, { name: 'fail-test' });
+    const result = await manager.assertScreenshot(page, { name: 'fail-test', testFilePath: __filename });
 
     expect(result.isMatch).toBe(false);
     expect(result.bestResult.severity).toBe(DiffSeverity.MAJOR);
     expect(result.summary).toContain('did not match');
     expect(result.summary).toContain('UPDATE_SNAPSHOTS');
-    console.log(result.summary);
   });
 
-  test('should save new baseline with updateBaseline option', async ({ page }) => {
-    await page.goto('https://playwright.dev');
+  test('should store snapshots in __snapshots__/<spec-name>/<snapshot-name>/ structure', async ({ page }) => {
+    await page.goto('https://www.saucedemo.com');
     await page.waitForLoadState('networkidle');
 
-    // Save initial baseline
-    const initial = await page.screenshot({ animations: 'disabled' });
-    manager.addBaseline('update-test', initial);
-    expect(manager.listBaselines('update-test')).toHaveLength(1);
+    await manager.assertScreenshot(page, { name: 'structure-test', testFilePath: __filename });
 
-    // Update with a new variant
-    const result = await manager.assertScreenshot(page, {
-      name: 'update-test',
-      updateBaseline: true,
-    });
+    // Verify directory structure
+    const specFolder = path.join(SNAPSHOTS_DIR, path.basename(__filename));
+    const snapshotFolder = path.join(specFolder, 'structure-test');
 
-    expect(result.isMatch).toBe(true);
-    expect(result.summary).toContain('Saved new baseline');
-    expect(manager.listBaselines('update-test')).toHaveLength(2);
+    expect(fs.existsSync(specFolder)).toBe(true);
+    expect(fs.existsSync(snapshotFolder)).toBe(true);
+    expect(fs.existsSync(path.join(snapshotFolder, 'baseline-1.png'))).toBe(true);
   });
 
   test('should support element-level screenshots', async ({ page }) => {
-    await page.goto('https://playwright.dev');
+    await page.goto('https://www.saucedemo.com');
     await page.waitForLoadState('networkidle');
 
-    const heading = page.getByRole('heading', { name: 'Playwright enables reliable' });
+    const logo = page.locator('.login_logo');
 
     // First call saves baseline
-    const result1 = await manager.assertElementScreenshot(heading, { name: 'heading-element' });
+    const result1 = await manager.assertElementScreenshot(logo, { name: 'logo-element', testFilePath: __filename });
     expect(result1.isMatch).toBe(true);
 
     // Second call matches
-    const result2 = await manager.assertElementScreenshot(heading, { name: 'heading-element' });
+    const result2 = await manager.assertElementScreenshot(logo, { name: 'logo-element', testFilePath: __filename });
     expect(result2.isMatch).toBe(true);
     expect(result2.matchedBaselineIndex).toBe(0);
-  });
-
-  test('should store snapshots at folder level when testFilePath is provided', async ({ page }) => {
-    await page.goto('https://playwright.dev');
-    await page.waitForLoadState('networkidle');
-
-    // Use a fresh manager without snapshotsDir override (uses folder-level storage)
-    const folderManager = new SnapshotManager({
-      diffOutputDir: path.resolve('test-results', 'snapshot-diffs'),
-    });
-
-    // Provide testFilePath — snapshots will be stored alongside this test file
-    const result = await folderManager.assertScreenshot(page, {
-      name: 'folder-level',
-      testFilePath: __filename,
-    });
-
-    expect(result.isMatch).toBe(true);
-
-    // Verify the snapshot folder was created next to this test file
-    const expectedDir = path.join(
-      path.dirname(__filename),
-      'snapshot-manager-folder-level-snapshots',
-    );
-    expect(fs.existsSync(expectedDir)).toBe(true);
-
-    // Verify baseline file exists (baselines are never deleted)
-    const files = fs.readdirSync(expectedDir).filter((f) => f.endsWith('.png'));
-    expect(files.length).toBeGreaterThanOrEqual(1);
   });
 });

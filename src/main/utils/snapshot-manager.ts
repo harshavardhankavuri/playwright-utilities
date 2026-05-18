@@ -33,8 +33,8 @@ export interface SnapshotOptions {
   name?: string;
   /**
    * Path to the test file calling this assertion.
-   * Used to determine where snapshots are stored (alongside the test file).
-   * Pass `__filename` or use the fixture which auto-injects this.
+   * Used to create a subfolder under __snapshots__/ named after the spec file.
+   * Pass `__filename`.
    */
   testFilePath?: string;
   /** Comparator options override for this assertion */
@@ -49,6 +49,7 @@ export interface SnapshotOptions {
   /**
    * If true, saves the current screenshot as a new valid baseline variant.
    * Equivalent to running with UPDATE_SNAPSHOTS=true env var.
+   * Respects maxBaselines — rotates oldest if at capacity.
    */
   updateBaseline?: boolean;
 }
@@ -58,146 +59,123 @@ export interface SnapshotOptions {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * SnapshotManager - Manages multiple valid baseline screenshots per test.
+ * SnapshotManager — Visual regression testing with multiple valid baselines.
  *
- * Key features:
- * - Store multiple valid baselines for the same element/page (e.g. different
- *   valid states, OS rendering differences, light/dark mode variants)
- * - On assertion, tries ALL baselines — passes if ANY match
- * - If all baselines fail, uses ScreenshotComparator for intelligent analysis
- *   to determine if the diff is a real bug or just noise/alignment
- * - Supports adding new baselines via UPDATE_SNAPSHOTS=true or updateBaseline option
+ * STORAGE STRUCTURE (similar to Playwright's built-in but with multi-baseline support):
+ *   __snapshots__/
+ *     login.spec.ts/              ← subfolder per spec file
+ *       login-form/               ← subfolder per snapshot name
+ *         baseline-1.png          ← up to maxBaselines valid states
+ *         baseline-2.png
+ *         baseline-3.png
+ *         baseline-4.png
+ *       submit-button/
+ *         baseline-1.png
+ *     inventory.spec.ts/
+ *       product-grid/
+ *         baseline-1.png
  *
- * Directory structure (folder-level, alongside test files):
- *   src/tests/login/
- *     login.spec.ts
- *     login-dashboard-snapshots/
- *       baseline-1.png
- *       baseline-2.png
- *   src/tests/
- *     home.spec.ts
- *     home-heading-snapshots/
- *       baseline-1.png
+ * BEHAVIOR:
+ * 1. First run (no baselines exist): saves screenshot as baseline-1.png, test passes.
+ * 2. Subsequent runs: compares against ALL stored baselines using ScreenshotComparator.
+ *    Passes if ANY baseline matches (accounting for anti-aliasing, alignment, etc.)
+ * 3. Update mode (UPDATE_SNAPSHOTS=true or updateBaseline: true):
+ *    Adds a new baseline variant. If at maxBaselines capacity, rotates out the oldest.
+ * 4. Never saves new baselines automatically on normal runs — only compares.
  *
  * Usage:
- *   const manager = new SnapshotManager();
- *   const result = await manager.assertScreenshot(page, {
- *     name: 'homepage',
- *     testFilePath: __filename,  // or use the fixture which auto-injects this
+ *   const snapshots = new SnapshotManager();
+ *
+ *   const result = await snapshots.assertScreenshot(page, {
+ *     name: 'login-form',
+ *     testFilePath: __filename,
  *   });
+ *   expect(result.isMatch).toBe(true);
  */
 export class SnapshotManager {
   private readonly snapshotsDir: string;
-  private readonly comparator: ScreenshotComparator;
   private readonly diffOutputDir: string;
+  private readonly maxBaselines: number;
+  private readonly comparator: ScreenshotComparator;
 
   constructor(options?: {
     /**
-     * Root directory for storing baselines (fallback when testFilePath is not provided).
-     * Default: '__snapshots__'
+     * Root directory for all snapshots. Default: '__snapshots__' (project root).
+     * All spec subfolders are created inside this directory.
      */
     snapshotsDir?: string;
-    /** Directory for diff output images. Default: 'test-results/snapshot-diffs' */
+    /** Directory for diff output images on failure. Default: 'test-results/snapshot-diffs' */
     diffOutputDir?: string;
+    /**
+     * Maximum number of valid baselines per snapshot.
+     * When exceeded during update, the oldest baseline is rotated out.
+     * Default: 4
+     */
+    maxBaselines?: number;
     /** Comparator options applied to all comparisons */
     comparatorOptions?: ComparatorOptions;
   }) {
     this.snapshotsDir = options?.snapshotsDir || path.resolve('__snapshots__');
     this.diffOutputDir = options?.diffOutputDir || path.resolve('test-results', 'snapshot-diffs');
+    this.maxBaselines = options?.maxBaselines || 4;
     this.comparator = new ScreenshotComparator({
       outputDir: this.diffOutputDir,
       ...options?.comparatorOptions,
     });
   }
 
-  /**
-   * Resolve the snapshot directory for a given test file and snapshot name.
-   *
-   * If testFilePath is provided:
-   *   src/tests/login/login.spec.ts + name "dashboard"
-   *   → src/tests/login/login-dashboard-snapshots/
-   *
-   * If testFilePath is NOT provided, falls back to:
-   *   <snapshotsDir>/<name>/
-   */
-  private resolveSnapshotDir(name: string, testFilePath?: string): string {
-    if (!testFilePath) {
-      return path.join(this.snapshotsDir, name);
-    }
-
-    // Extract the test file's directory and base name (without extension)
-    const testDir = path.dirname(testFilePath);
-    const testBaseName = path.basename(testFilePath).replace(/\.(spec|test)\.(ts|js|mjs)$/, '');
-    const folderName = `${testBaseName}-${name}-snapshots`;
-
-    return path.join(testDir, folderName);
-  }
-
   // ─── Public API ─────────────────────────────────────────────────────────
 
   /**
    * Assert a full-page screenshot matches one of the stored baselines.
-   * If no baselines exist, saves the current screenshot as the first baseline.
+   * If no baselines exist, saves the first one and passes.
    */
-  async assertScreenshot(
-    page: Page,
-    options?: SnapshotOptions,
-  ): Promise<MultiSnapshotResult> {
-    const screenshotBuffer = await page.screenshot({
+  async assertScreenshot(page: Page, options?: SnapshotOptions): Promise<MultiSnapshotResult> {
+    const buffer = await page.screenshot({
       fullPage: options?.screenshotOptions?.fullPage,
       animations: options?.screenshotOptions?.animations ?? 'disabled',
       mask: options?.screenshotOptions?.mask,
       omitBackground: options?.screenshotOptions?.omitBackground,
     });
-
-    return this.assertBuffer(screenshotBuffer, options);
+    return this.assertBuffer(buffer, options);
   }
 
   /**
    * Assert an element screenshot matches one of the stored baselines.
    */
-  async assertElementScreenshot(
-    locator: Locator,
-    options?: SnapshotOptions,
-  ): Promise<MultiSnapshotResult> {
-    const screenshotBuffer = await locator.screenshot({
+  async assertElementScreenshot(locator: Locator, options?: SnapshotOptions): Promise<MultiSnapshotResult> {
+    const buffer = await locator.screenshot({
       animations: options?.screenshotOptions?.animations ?? 'disabled',
       mask: options?.screenshotOptions?.mask,
       omitBackground: options?.screenshotOptions?.omitBackground,
     });
-
-    return this.assertBuffer(screenshotBuffer, options);
+    return this.assertBuffer(buffer, options);
   }
 
   /**
    * Assert a raw PNG buffer against stored baselines.
    */
-  async assertBuffer(
-    actualBuffer: Buffer,
-    options?: SnapshotOptions,
-  ): Promise<MultiSnapshotResult> {
+  async assertBuffer(actualBuffer: Buffer, options?: SnapshotOptions): Promise<MultiSnapshotResult> {
     const name = this.sanitizeName(options?.name || 'screenshot');
-    const shouldUpdate = options?.updateBaseline || process.env.UPDATE_SNAPSHOTS === 'true';
     const snapshotDir = this.resolveSnapshotDir(name, options?.testFilePath);
+    const shouldUpdate = options?.updateBaseline || process.env.UPDATE_SNAPSHOTS === 'true';
 
-    // If update mode, save as new baseline
+    // ─── Update mode: save new baseline ──────────────────────────────────
     if (shouldUpdate) {
-      this.saveNewBaseline(snapshotDir, actualBuffer);
+      this.saveBaseline(snapshotDir, actualBuffer);
       return {
         isMatch: true,
         matchedBaselineIndex: -1,
         bestResult: this.identicalResult(actualBuffer),
         allResults: [],
-        summary: `📸 Saved new baseline variant in: ${snapshotDir}`,
+        summary: `📸 Saved/updated baseline in: ${snapshotDir}`,
       };
     }
 
-    // Load existing baselines
+    // ─── First run: no baselines exist → save first and pass ─────────────
     const baselines = this.loadBaselines(snapshotDir);
-
-    // If no baselines exist, save the first one automatically
     if (baselines.length === 0) {
-      this.saveNewBaseline(snapshotDir, actualBuffer);
+      this.saveBaseline(snapshotDir, actualBuffer);
       return {
         isMatch: true,
         matchedBaselineIndex: -1,
@@ -207,7 +185,7 @@ export class SnapshotManager {
       };
     }
 
-    // Compare against all baselines
+    // ─── Compare against all baselines ───────────────────────────────────
     const comparator = options?.comparatorOptions
       ? new ScreenshotComparator({ outputDir: this.diffOutputDir, ...options.comparatorOptions })
       : this.comparator;
@@ -225,23 +203,19 @@ export class SnapshotManager {
       );
       allResults.push(result);
 
-      // Track the best (closest) result
       if (!bestResult || result.diffPercentage < bestResult.diffPercentage) {
         bestResult = result;
         bestIndex = i;
       }
 
-      // If any baseline matches, we're done
       if (result.isMatch) {
         matchedIndex = i;
-        break;
+        break; // Found a match, no need to check more
       }
     }
 
     const matched = matchedIndex >= 0;
-    const summary = this.buildMultiSummary(
-      matched, matchedIndex, bestIndex, baselines, allResults, bestResult!, name,
-    );
+    const summary = this.buildSummary(matched, matchedIndex, bestIndex, baselines, allResults, bestResult!, name);
 
     return {
       isMatch: matched,
@@ -254,80 +228,100 @@ export class SnapshotManager {
   }
 
   /**
-   * Manually add a new valid baseline variant for a snapshot name.
-   * @param name - Snapshot name
-   * @param buffer - PNG buffer to save
-   * @param testFilePath - Optional test file path for folder-level storage
+   * Manually add a new baseline variant.
+   * Respects maxBaselines — rotates oldest if at capacity.
    */
   addBaseline(name: string, buffer: Buffer, testFilePath?: string): string {
     const snapshotDir = this.resolveSnapshotDir(this.sanitizeName(name), testFilePath);
-    return this.saveNewBaseline(snapshotDir, buffer);
+    return this.saveBaseline(snapshotDir, buffer);
   }
 
   /**
-   * List all stored baselines for a given snapshot name.
-   * @param name - Snapshot name
-   * @param testFilePath - Optional test file path for folder-level storage
+   * List all stored baselines for a snapshot.
    */
   listBaselines(name: string, testFilePath?: string): string[] {
     const snapshotDir = this.resolveSnapshotDir(this.sanitizeName(name), testFilePath);
     if (!fs.existsSync(snapshotDir)) return [];
-    return fs.readdirSync(snapshotDir)
-      .filter((f) => f.endsWith('.png'))
-      .sort();
+    return fs.readdirSync(snapshotDir).filter((f) => f.endsWith('.png')).sort();
   }
 
   /**
-   * @deprecated Baselines should not be deleted. Use version control to manage baseline history.
-   * This method is intentionally disabled to protect baseline integrity.
+   * Get the snapshot directory path for a given name and test file.
    */
-  removeBaseline(_name: string, _index: number, _testFilePath?: string): boolean {
-    console.warn(
-      '[SnapshotManager] removeBaseline() is disabled. Baselines are protected and should not be deleted. ' +
-      'Use version control (git) to manage baseline history.',
-    );
-    return false;
+  getSnapshotDir(name: string, testFilePath?: string): string {
+    return this.resolveSnapshotDir(this.sanitizeName(name), testFilePath);
   }
+
+  // ─── Internal: Directory Resolution ─────────────────────────────────────
 
   /**
-   * @deprecated Baselines should not be deleted. Use version control to manage baseline history.
-   * This method is intentionally disabled to protect baseline integrity.
+   * Resolve the snapshot directory.
+   *
+   * Structure: __snapshots__/<spec-filename>/<snapshot-name>/
+   *
+   * Example:
+   *   testFilePath = '/project/src/tests/saucedemo/login.spec.ts'
+   *   name = 'login-form'
+   *   → __snapshots__/login.spec.ts/login-form/
    */
-  clearBaselines(_name: string, _testFilePath?: string): void {
-    console.warn(
-      '[SnapshotManager] clearBaselines() is disabled. Baselines are protected and should not be deleted. ' +
-      'Use version control (git) to manage baseline history.',
-    );
+  private resolveSnapshotDir(name: string, testFilePath?: string): string {
+    if (!testFilePath) {
+      // Fallback: flat structure under __snapshots__/<name>/
+      return path.join(this.snapshotsDir, name);
+    }
+
+    // Use the spec filename (with extension) as the subfolder name
+    const specFileName = path.basename(testFilePath);
+    return path.join(this.snapshotsDir, specFileName, name);
   }
 
-  // ─── Internal ───────────────────────────────────────────────────────────
+  // ─── Internal: Baseline I/O ─────────────────────────────────────────────
 
   private loadBaselines(dir: string): { name: string; buffer: Buffer }[] {
     if (!fs.existsSync(dir)) return [];
-
     return fs.readdirSync(dir)
       .filter((f) => f.endsWith('.png'))
       .sort()
-      .map((f) => ({
-        name: f,
-        buffer: fs.readFileSync(path.join(dir, f)),
-      }));
+      .map((f) => ({ name: f, buffer: fs.readFileSync(path.join(dir, f)) }));
   }
 
-  private saveNewBaseline(dir: string, buffer: Buffer): string {
+  /**
+   * Save a new baseline. If at maxBaselines capacity, rotate out the oldest.
+   */
+  private saveBaseline(dir: string, buffer: Buffer): string {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    // Find next available index
-    const existing = fs.readdirSync(dir).filter((f) => f.endsWith('.png'));
-    const nextIndex = existing.length + 1;
-    const filename = `baseline-${nextIndex}.png`;
-    const filePath = path.join(dir, filename);
+    const existing = fs.readdirSync(dir).filter((f) => f.endsWith('.png')).sort();
 
+    // If at capacity, remove the oldest (baseline-1) and shift others down
+    if (existing.length >= this.maxBaselines) {
+      // Remove oldest
+      fs.unlinkSync(path.join(dir, existing[0]));
+      // Rename remaining to fill the gap (baseline-2 → baseline-1, etc.)
+      const remaining = existing.slice(1);
+      for (let i = 0; i < remaining.length; i++) {
+        const oldPath = path.join(dir, remaining[i]);
+        const newPath = path.join(dir, `baseline-${i + 1}.png`);
+        if (oldPath !== newPath) {
+          fs.renameSync(oldPath, newPath);
+        }
+      }
+      // Save new as the last slot
+      const filePath = path.join(dir, `baseline-${this.maxBaselines}.png`);
+      fs.writeFileSync(filePath, buffer);
+      return filePath;
+    }
+
+    // Not at capacity: save as next index
+    const nextIndex = existing.length + 1;
+    const filePath = path.join(dir, `baseline-${nextIndex}.png`);
     fs.writeFileSync(filePath, buffer);
     return filePath;
   }
+
+  // ─── Internal: Helpers ──────────────────────────────────────────────────
 
   private sanitizeName(name: string): string {
     return name.replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-');
@@ -353,7 +347,7 @@ export class SnapshotManager {
     };
   }
 
-  private buildMultiSummary(
+  private buildSummary(
     matched: boolean,
     matchedIndex: number,
     bestIndex: number,
@@ -382,7 +376,7 @@ export class SnapshotManager {
       lines.push('   Intelligent analysis of closest match:');
       lines.push(`   ${bestResult.summary.split('\n').join('\n   ')}`);
       lines.push('');
-      lines.push(`   💡 If this is a valid new state, run with UPDATE_SNAPSHOTS=true to save as a new baseline.`);
+      lines.push('   💡 To update baselines: UPDATE_SNAPSHOTS=true npx playwright test');
     }
 
     return lines.join('\n');
