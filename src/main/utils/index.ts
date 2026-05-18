@@ -115,3 +115,12 @@ export {
   type TableConfig,
   type SortDirection,
 } from './table-helpers';
+
+// Smart Locator (self-healing locators with multi-strategy fallback)
+export {
+  SmartLocator,
+  type LocatorStrategy,
+  type ElementFingerprint,
+  type HealingResult,
+  type SmartLocatorOptions,
+} from './smart-locator';
