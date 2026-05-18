@@ -5,6 +5,7 @@ playwright-report/
 blob-report/
 allure-results/
 allure-report/
+reports/
 env/.env.local
 .auth/
 __snapshots__/
