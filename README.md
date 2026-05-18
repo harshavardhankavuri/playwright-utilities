@@ -23,6 +23,9 @@ A comprehensive Playwright test automation framework built with TypeScript follo
 - [BrowserStack Integration](#browserstack-integration)
 - [Reporting](#reporting)
 
+> **Full API Reference:** See [`docs/UTILITIES.md`](docs/UTILITIES.md) for detailed usage examples of every utility.
+> **Screenshot Guide:** See [`docs/screenshot-comparator-guide.md`](docs/screenshot-comparator-guide.md) for the visual testing deep-dive.
+
 ## Project Structure
 
 ```
@@ -633,7 +636,37 @@ npm run report:allure:open     # Open existing
 - **Language:** TypeScript (strict mode)
 - **Linting:** ESLint + @typescript-eslint + eslint-plugin-playwright
 - **Formatting:** Prettier
-- **Reporting:** Allure + Playwright HTML
+- **Reporting:** Allure + Playwright HTML + X-Ray Jira (optional)
 - **PDF Parsing:** pdf-parse
 - **Image Comparison:** pixelmatch + pngjs
+- **HTTP Client:** axios (for X-Ray integration)
 - **Cross-platform:** cross-env for env variable management
+
+## SmartLocator (Self-Healing)
+
+Locators that automatically heal when UI changes break them:
+
+```typescript
+// Register with weighted user locators
+await smart.register('submit-btn', [
+  { locator: page.getByTestId('submit'), weight: 300 },
+  { locator: page.getByRole('button', { name: 'Submit' }), weight: 200 },
+  { locator: page.locator('#submit-btn'), weight: 100 },
+]);
+
+// Find — tries user locators first, heals with auto strategies if all fail
+const btn = await smart.locate('submit-btn');
+await btn.click();
+```
+
+User locators are tried first (highest weight wins). If all fail, auto-extracted DOM strategies (testId, role, label, text, CSS, xpath) serve as healing fallbacks.
+
+## X-Ray Jira Integration
+
+Push test results to X-Ray — disabled by default, zero overhead until activated:
+
+```bash
+XRAY_ENABLED=true XRAY_FEATURE_UPDATE_STATUS=true npx playwright test
+```
+
+Tag tests with X-Ray keys: `test('[RPX-124] should login', ...)`. See [`docs/UTILITIES.md`](docs/UTILITIES.md#14-x-ray-jira-reporter) for full setup.
