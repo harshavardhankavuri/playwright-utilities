@@ -8,8 +8,8 @@ Complete documentation for every utility in the Playwright Utilities framework.
 
 1. [SmartLocator (Self-Healing)](#1-smartlocator)
 2. [Fluent Assertions](#2-fluent-assertions)
-3. [Screenshot Comparator](#3-screenshot-comparator)
-4. [Snapshot Manager](#4-snapshot-manager)
+3. [Visual Regression](#3-visual-regression)
+4. [Screenshot Comparator](#4-screenshot-comparator)
 5. [PDF Comparator](#5-pdf-comparator)
 6. [Network Mocker](#6-network-mocker)
 7. [Session Manager](#7-session-manager)
@@ -144,10 +144,81 @@ await fluentExpectResponse(response).toBeOK();
 
 ---
 
-## 3. Screenshot Comparator
+## 3. Visual Regression
+
+**File:** `src/main/utils/visual-regression.ts`
+**Purpose:** End-to-end visual testing with multi-baseline support, masking, and intelligent diff analysis.
+
+### How It Works
+
+```
+1. Capture screenshot
+   ├── Inject CSS to hide maskSelectors (iframes, spinners)
+   ├── Use Playwright's mask option for Locator-based hiding
+   └── Apply region masks (gray rectangles on pixel coordinates)
+
+2. Compare against baselines (up to 4 valid states)
+   ├── Uses ScreenshotComparator engine for each baseline
+   ├── Classifies diffs: anti-aliasing, alignment, color, structural
+   └── Passes if ANY baseline matches
+
+3. Result
+   ├── passed: true/false
+   ├── analysis: full diff breakdown
+   └── summary: human-readable report
+```
+
+### Storage Structure
+
+```
+__snapshots__/
+  login.spec.ts/              ← subfolder per spec file
+    login-form/               ← subfolder per snapshot name
+      baseline-1.png
+      baseline-2.png
+```
+
+### Usage
+
+```typescript
+import { VisualRegression } from '../main/utils';
+
+const visual = new VisualRegression({ maxBaselines: 4 });
+
+// Page comparison
+await visual.assertPage(page, {
+  name: 'inventory-page',
+  testFilePath: __filename,
+  fullPage: true,
+});
+
+// Element comparison with masking
+await visual.assertElement(card, page, {
+  name: 'product-card',
+  testFilePath: __filename,
+  mask: [page.locator('.timestamp')],          // Locator masking
+  maskSelectors: ['iframe', '.ad-banner'],     // CSS selector masking
+  maskRegions: [{ x: 10, y: 50, width: 200, height: 30 }], // Pixel region masking
+});
+
+// Update baselines
+// UPDATE_SNAPSHOTS=true npx playwright test
+```
+
+**Key features over Playwright's built-in `toHaveScreenshot()`:**
+- Up to 4 valid baselines per snapshot (passes if ANY match)
+- Three masking strategies: Locator, CSS selector, pixel region
+- Intelligent diff classification (AA, alignment, color, structural)
+- Per-category tolerance thresholds — distinguishes real bugs from rendering noise
+
+---
+
+## 4. Screenshot Comparator
 
 **File:** `src/main/utils/screenshot-comparator.ts`
-**Purpose:** Intelligent pixel-level image comparison that classifies differences.
+**Purpose:** Low-level pixel-diff engine. Takes two PNG buffers and classifies every differing pixel.
+
+> For end-to-end visual testing, use [VisualRegression](#3-visual-regression) instead. This engine is exposed for raw image-vs-image comparison only.
 
 ### Classification Pipeline
 
@@ -174,50 +245,10 @@ const comparator = new ScreenshotComparator({
 
 const result = await comparator.compare(baselineBuffer, actualBuffer);
 // result.isMatch, result.severity, result.summary, result.categoryBreakdown
+
+// Or compare files from disk
+const result2 = await comparator.compareFiles('baseline.png', 'actual.png');
 ```
-
----
-
-## 4. Snapshot Manager
-
-**File:** `src/main/utils/snapshot-manager.ts`
-**Purpose:** Multi-baseline visual testing with folder-level storage.
-
-### Storage Structure
-
-```
-src/tests/login/
-  login.spec.ts
-  login-dashboard-snapshots/     ← auto-created
-    baseline-1.png               ← light mode
-    baseline-2.png               ← dark mode
-```
-
-### Usage
-
-```typescript
-import { SnapshotManager } from '../main/utils';
-
-const manager = new SnapshotManager();
-
-// Compares against ALL baselines — passes if ANY match
-const result = await manager.assertScreenshot(page, {
-  name: 'dashboard',
-  testFilePath: __filename,
-});
-
-// Element-level
-const result = await manager.assertElementScreenshot(locator, {
-  name: 'submit-button',
-  testFilePath: __filename,
-});
-
-// Add new baseline variant
-// UPDATE_SNAPSHOTS=true npx playwright test
-await manager.assertScreenshot(page, { name: 'dashboard', updateBaseline: true });
-```
-
-**Baselines are immutable** — `removeBaseline()` and `clearBaselines()` are disabled.
 
 ---
 

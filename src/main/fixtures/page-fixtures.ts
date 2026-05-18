@@ -1,14 +1,14 @@
 import { test as base } from '@playwright/test';
 import { HomePage } from '../pages';
 import { fluentExpect, fluentExpectPage, fluentExpectResponse } from '../assertions';
-import { SnapshotManager } from '../utils';
+import { VisualRegression } from '../utils';
 
 /**
  * Custom test fixtures that provide page objects and utilities to tests.
  */
 type PageFixtures = {
   homePage: HomePage;
-  snapshotManager: SnapshotManager;
+  visual: VisualRegression;
 };
 
 export const test = base.extend<PageFixtures>({
@@ -16,12 +16,12 @@ export const test = base.extend<PageFixtures>({
     const homePage = new HomePage(page);
     await use(homePage);
   },
-  snapshotManager: async ({}, use) => {
-    const manager = new SnapshotManager();
-    await use(manager);
+  visual: async ({}, use) => {
+    const visual = new VisualRegression();
+    await use(visual);
   },
 });
 
 export { expect } from '@playwright/test';
 export { fluentExpect as expect$, fluentExpect, fluentExpectPage, fluentExpectResponse };
-export { SnapshotManager };
+export { VisualRegression };

@@ -11,13 +11,6 @@ export {
   type DiffRegion,
 } from './screenshot-comparator';
 
-// Multi-baseline snapshot management
-export {
-  SnapshotManager,
-  type MultiSnapshotResult,
-  type SnapshotOptions,
-} from './snapshot-manager';
-
 // PDF download, comparison, and masking
 export {
   PdfComparator,

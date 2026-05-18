@@ -33,7 +33,6 @@ npm run report:allure:single      # Generate single-file Allure report
 │       ├── saucedemo/            # Functional, E2E, UI, Visual tests
 │       ├── fluent-assertions.spec.ts
 │       ├── smart-locator.spec.ts
-│       ├── snapshot-manager.spec.ts
 │       ├── screenshot-comparator.spec.ts
 │       ├── network-mocker.spec.ts
 │       └── pdf-comparator.spec.ts
@@ -52,9 +51,8 @@ npm run report:allure:single      # Generate single-file Allure report
 |---------|---------|
 | **SmartLocator** | Self-healing locators with weighted strategies |
 | **Fluent Assertions** | Chainable `expect$()` covering all Playwright assertions |
-| **Visual Regression** | Enhanced snapshot comparison with masking |
-| **Snapshot Manager** | Multi-baseline visual regression (max 4 per snapshot) |
-| **Screenshot Comparator** | Intelligent diff classification (AA, alignment, structural) |
+| **Visual Regression** | User-facing visual testing — multi-baseline + masking + intelligent diff |
+| **Screenshot Comparator** | Low-level diff engine that classifies pixel differences |
 | **API Client** | Typed HTTP helpers with validation |
 | **Test Data Factory** | Seeded fake data generation |
 | **Soft Assertions** | Collect all failures, report at end |
@@ -112,36 +110,26 @@ await smart.register('submit-btn', [
 const btn = await smart.locate('submit-btn');
 ```
 
-### Visual Regression (Multi-Baseline)
+### Visual Regression (Multi-Baseline + Masking)
 
 ```typescript
-const snapshots = new SnapshotManager({ maxBaselines: 4 });
+const visual = new VisualRegression({ maxBaselines: 4 });
 
 // Compares against stored baselines — passes if ANY match
-const result = await snapshots.assertScreenshot(page, {
-  name: 'dashboard',
-  testFilePath: __filename,
-});
-
-// Update baselines: UPDATE_SNAPSHOTS=true npx playwright test
-```
-
-### Visual Regression with Masking
-
-```typescript
-const visual = new VisualRegression();
-
-// Mask dynamic elements, selectors, or pixel regions
-await visual.assertPage(page, {
+const result = await visual.assertPage(page, {
   name: 'dashboard',
   testFilePath: __filename,
   mask: [page.locator('.timestamp')],           // Hide by Locator
   maskSelectors: ['iframe', '.ad-banner'],      // Hide by CSS selector
   maskRegions: [{ x: 10, y: 50, width: 200, height: 30 }], // Black out area
 });
+
+// Update baselines: UPDATE_SNAPSHOTS=true npx playwright test
 ```
 
 Baselines stored in `__snapshots__/<spec-file>/<name>/baseline-N.png` and committed to git for CI.
+
+For raw image-to-image diffing without baseline management, use `ScreenshotComparator` directly — it's the low-level engine `VisualRegression` builds on.
 
 ### API Client
 
@@ -214,7 +202,6 @@ All three pipelines support configurable parameters (environment, browser, worke
 | SmartLocator | [`docs/smart-locator.md`](docs/smart-locator.md) |
 | Fluent Assertions | [`docs/fluent-assertions.md`](docs/fluent-assertions.md) |
 | Visual Regression | [`docs/visual-regression.md`](docs/visual-regression.md) |
-| Snapshot Manager | [`docs/snapshot-manager.md`](docs/snapshot-manager.md) |
 | Screenshot Comparator | [`docs/screenshot-comparator.md`](docs/screenshot-comparator.md) |
 | API Client | [`docs/api-client.md`](docs/api-client.md) |
 | Test Data Factory | [`docs/test-data-factory.md`](docs/test-data-factory.md) |

@@ -420,7 +420,7 @@ export class NetworkMocker {
    * This wraps Playwright's page.routeFromHAR() with a simpler API.
    *
    * Usage:
-   *   await mocker.replayFromHAR('./hars/api.har', { url: '**/api/**' });
+   *   await mocker.replayFromHAR('./hars/api.har', { url: '**\/api\/**' });
    */
   async replayFromHAR(
     harPath: string,
@@ -446,7 +446,7 @@ export class NetworkMocker {
    * Navigate and interact with the page, then call saveHAR() to write the file.
    *
    * Usage:
-   *   await mocker.recordHAR('./hars/api.har', { url: '**/api/**' });
+   *   await mocker.recordHAR('./hars/api.har', { url: '**\/api\/**' });
    *   // ... navigate and interact ...
    *   // HAR is auto-saved when update: true is used with routeFromHAR
    */

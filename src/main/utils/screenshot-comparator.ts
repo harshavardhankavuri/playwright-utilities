@@ -144,13 +144,19 @@ const DEFAULT_OPTIONS: Required<ComparatorOptions> = {
 };
 
 /**
- * ScreenshotComparator - Advanced visual comparison utility.
+ * ScreenshotComparator — Low-level pixel-diff engine.
  *
- * Intelligently classifies pixel differences into:
- * - Anti-aliasing noise (sub-pixel rendering)
- * - Alignment shifts (1-3px positional jitter)
- * - Color tolerance (minor rendering engine differences)
- * - Structural changes (actual visual bugs)
+ * This is a pure comparison engine. It takes two PNG buffers and produces a
+ * detailed analysis classifying every differing pixel as anti-aliasing noise,
+ * alignment shift, color tolerance, or structural change.
+ *
+ * It does NOT manage baselines, capture screenshots, or apply masking. For
+ * end-to-end visual testing, use `VisualRegression` which uses this engine
+ * internally and adds capture, masking, and multi-baseline storage.
+ *
+ * Use this class directly only when you need raw image-vs-image comparison
+ * with full control over inputs and outputs (e.g. comparing PDFs rendered to
+ * PNG, comparing two arbitrary buffers from external sources).
  *
  * Usage:
  *   const comparator = new ScreenshotComparator();

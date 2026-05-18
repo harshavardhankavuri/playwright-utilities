@@ -76,11 +76,14 @@ test.describe('SmartLocator', () => {
     const link = page.getByRole('link', { name: 'Get started' });
     const fingerprint = await smart.register('heal-test', link);
 
-    // Corrupt the primary strategy so it won't match
+    // Corrupt the primary strategy so it won't match. Mark it as 'auto' so the
+    // value is actually used to construct a Locator (user strategies use the
+    // live cached Locator instead of the value).
     fingerprint.strategies[0] = {
       type: 'css',
       value: '#non-existent-element-xyz',
-      confidence: 0.99,
+      weight: 99,
+      source: 'auto',
     };
 
     // The find should heal by falling back to a working strategy
@@ -102,12 +105,13 @@ test.describe('SmartLocator', () => {
       strategyTimeout: 1000,
     });
 
-    // Register with only broken strategies
+    // Register with only broken strategies — using 'auto' source so they're
+    // reconstructed from the strategy descriptor (no live Locator needed).
     smart['fingerprints'].set('broken-element', {
       name: 'broken-element',
       strategies: [
-        { type: 'css', value: '#does-not-exist-1', confidence: 0.9 },
-        { type: 'css', value: '#does-not-exist-2', confidence: 0.8 },
+        { type: 'css', value: '#does-not-exist-1', weight: 90, source: 'auto' },
+        { type: 'css', value: '#does-not-exist-2', weight: 80, source: 'auto' },
       ],
       updatedAt: Date.now(),
     });

@@ -5,5 +5,5 @@ export {
   fluentExpect,
   fluentExpectPage,
   fluentExpectResponse,
-  SnapshotManager,
+  VisualRegression,
 } from './page-fixtures';

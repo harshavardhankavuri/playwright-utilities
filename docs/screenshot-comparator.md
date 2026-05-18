@@ -4,7 +4,11 @@
 
 ## Overview
 
-ScreenshotComparator performs pixel-level image comparison with intelligent diff classification. Instead of a simple "X% pixels differ" result, it categorizes each differing pixel into one of four classes — anti-aliasing noise, alignment shifts, color tolerance, or structural changes — and assigns an overall severity level. This dramatically reduces false positives in visual regression testing.
+ScreenshotComparator is the **low-level pixel-diff engine** behind the framework. It takes two PNG buffers (or file paths) and produces a detailed analysis classifying every differing pixel as anti-aliasing noise, alignment shift, color tolerance, or structural change. It does not capture screenshots, manage baselines, or apply masking.
+
+For day-to-day visual testing, use [`VisualRegression`](visual-regression.md) instead — it wraps this engine with capture, masking, and multi-baseline storage.
+
+Use `ScreenshotComparator` directly only when you need raw image-vs-image comparison with full control: comparing PDFs rendered to PNG, diffing two arbitrary buffers from external sources, or building your own visual testing flow.
 
 ## How It Works
 
@@ -109,4 +113,4 @@ for (const region of result.regions) {
 - Use `outputDir` during development to visually inspect diff images — red pixels are structural, yellow are AA.
 - If cross-browser tests produce many alignment-shift diffs, increase `maxAlignmentShift` to 4–5.
 - For high-DPI screenshots, you may need to increase `maxStructuralPixels` proportionally.
-- Combine with `SnapshotManager` for multi-baseline support — the comparator is the engine, the manager handles storage and rotation.
+- For end-to-end visual testing with baselines, masking, and capture in one call, use `VisualRegression` instead — it uses this engine internally.
