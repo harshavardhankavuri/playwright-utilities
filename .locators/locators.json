@@ -121,5 +121,146 @@
     ],
     "updatedAt": 1779097160256,
     "pagePattern": "https://playwright.dev/"
+  },
+  "login-username": {
+    "name": "login-username",
+    "strategies": [
+      {
+        "type": "custom",
+        "value": "placeholder:Username",
+        "weight": 200,
+        "source": "user"
+      },
+      {
+        "type": "custom",
+        "value": "css:id",
+        "weight": 100,
+        "source": "user"
+      },
+      {
+        "type": "placeholder",
+        "value": "Username",
+        "weight": 85,
+        "source": "auto"
+      },
+      {
+        "type": "id",
+        "value": "user-name",
+        "weight": 85,
+        "source": "auto"
+      },
+      {
+        "type": "name",
+        "value": "user-name",
+        "weight": 75,
+        "source": "auto"
+      },
+      {
+        "type": "css",
+        "value": "#user-name",
+        "weight": 30,
+        "source": "auto"
+      },
+      {
+        "type": "xpath",
+        "value": "/html[1]/body[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/form[1]/div[1]/input[1]",
+        "weight": 20,
+        "source": "auto"
+      }
+    ],
+    "updatedAt": 1779100867523,
+    "pagePattern": "https://www.saucedemo.com/"
+  },
+  "login-password": {
+    "name": "login-password",
+    "strategies": [
+      {
+        "type": "custom",
+        "value": "placeholder:Password",
+        "weight": 200,
+        "source": "user"
+      },
+      {
+        "type": "custom",
+        "value": "css:id",
+        "weight": 100,
+        "source": "user"
+      },
+      {
+        "type": "placeholder",
+        "value": "Password",
+        "weight": 85,
+        "source": "auto"
+      },
+      {
+        "type": "id",
+        "value": "password",
+        "weight": 85,
+        "source": "auto"
+      },
+      {
+        "type": "name",
+        "value": "password",
+        "weight": 75,
+        "source": "auto"
+      },
+      {
+        "type": "css",
+        "value": "#password",
+        "weight": 30,
+        "source": "auto"
+      },
+      {
+        "type": "xpath",
+        "value": "/html[1]/body[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/form[1]/div[2]/input[1]",
+        "weight": 20,
+        "source": "auto"
+      }
+    ],
+    "updatedAt": 1779100867568,
+    "pagePattern": "https://www.saucedemo.com/"
+  },
+  "login-submit": {
+    "name": "login-submit",
+    "strategies": [
+      {
+        "type": "custom",
+        "value": "role:button Login",
+        "weight": 200,
+        "source": "user"
+      },
+      {
+        "type": "custom",
+        "value": "css:id",
+        "weight": 100,
+        "source": "user"
+      },
+      {
+        "type": "id",
+        "value": "login-button",
+        "weight": 85,
+        "source": "auto"
+      },
+      {
+        "type": "name",
+        "value": "login-button",
+        "weight": 75,
+        "source": "auto"
+      },
+      {
+        "type": "css",
+        "value": "#login-button",
+        "weight": 30,
+        "source": "auto"
+      },
+      {
+        "type": "xpath",
+        "value": "/html[1]/body[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/form[1]/input[1]",
+        "weight": 20,
+        "source": "auto"
+      }
+    ],
+    "updatedAt": 1779100867620,
+    "pagePattern": "https://www.saucedemo.com/"
   }
 }
