@@ -1,0 +1,229 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Azure DevOps Pipeline — Playwright E2E Tests
+# ─────────────────────────────────────────────────────────────────────────────
+# Configurable parameters for environment, browser, workers, retries, etc.
+#
+# Triggers:
+#   - Push to main/develop
+#   - Pull requests to main
+#   - Manual run with parameters
+#
+# Prerequisites:
+#   - Variable group 'playwright-secrets' with:
+#     JIRA_BASE_URL, JIRA_PROJECT_KEY, JIRA_EMAIL, JIRA_API_TOKEN,
+#     BROWSERSTACK_USERNAME, BROWSERSTACK_ACCESS_KEY
+# ─────────────────────────────────────────────────────────────────────────────
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+
+pr:
+  branches:
+    include:
+      - main
+
+# ─── Configurable Parameters ──────────────────────────────────────────────────
+parameters:
+  - name: environment
+    displayName: 'Target Environment'
+    type: string
+    default: 'dev'
+    values:
+      - dev
+      - qa
+      - staging
+      - prod
+
+  - name: project
+    displayName: 'Browser Project'
+    type: string
+    default: 'chromium'
+    values:
+      - chromium
+      - firefox
+      - webkit
+      - all
+
+  - name: workers
+    displayName: 'Parallel Workers'
+    type: number
+    default: 4
+
+  - name: retries
+    displayName: 'Retries on Failure'
+    type: number
+    default: 2
+
+  - name: tags
+    displayName: 'Test Tags Filter (e.g. @smoke)'
+    type: string
+    default: ''
+
+  - name: shard
+    displayName: 'Shard (e.g. 1/3, leave empty for no sharding)'
+    type: string
+    default: ''
+
+  - name: reportMode
+    displayName: 'Report Mode'
+    type: string
+    default: 'full'
+    values:
+      - full
+      - single
+
+  - name: xrayEnabled
+    displayName: 'Push Results to X-Ray'
+    type: boolean
+    default: false
+
+  - name: xrayCreateExecution
+    displayName: 'Create X-Ray Test Execution'
+    type: boolean
+    default: false
+
+  - name: xrayExecutionKey
+    displayName: 'Existing X-Ray Execution Key (skip creation)'
+    type: string
+    default: ''
+
+  - name: baseUrlOverride
+    displayName: 'Base URL Override (leave empty for env default)'
+    type: string
+    default: ''
+
+# ─── Variable Groups ──────────────────────────────────────────────────────────
+variables:
+  - group: playwright-secrets
+  - name: CI
+    value: 'true'
+  - name: ENV
+    value: ${{ parameters.environment }}
+  - name: REPORT_MODE
+    value: ${{ parameters.reportMode }}
+  - name: XRAY_ENABLED
+    value: ${{ parameters.xrayEnabled }}
+  - name: XRAY_FEATURE_CREATE_EXECUTION
+    value: ${{ parameters.xrayCreateExecution }}
+  - name: XRAY_FEATURE_UPDATE_STATUS
+    value: ${{ parameters.xrayEnabled }}
+  - name: XRAY_FEATURE_ATTACH_SCREENSHOTS
+    value: ${{ parameters.xrayEnabled }}
+  - name: XRAY_EXECUTION_KEY
+    value: ${{ parameters.xrayExecutionKey }}
+
+# ─── Stages ───────────────────────────────────────────────────────────────────
+stages:
+  - stage: Test
+    displayName: 'Run Playwright Tests'
+    jobs:
+      - job: PlaywrightTests
+        displayName: 'E2E Tests — ${{ parameters.project }} (${{ parameters.environment }})'
+        timeoutInMinutes: 30
+        pool:
+          vmImage: 'ubuntu-latest'
+
+        steps:
+          # ─── Setup ──────────────────────────────────────────────────────
+          - task: NodeTool@0
+            displayName: 'Install Node.js 20'
+            inputs:
+              versionSpec: '20.x'
+
+          - script: npm ci
+            displayName: 'Install dependencies'
+
+          - script: |
+              if [ "${{ parameters.project }}" != "all" ]; then
+                npx playwright install --with-deps ${{ parameters.project }}
+              else
+                npx playwright install --with-deps
+              fi
+            displayName: 'Install Playwright browsers'
+
+          # ─── Run Tests ──────────────────────────────────────────────────
+          - script: |
+              ARGS=""
+
+              # Project
+              if [ "${{ parameters.project }}" != "all" ]; then
+                ARGS="$ARGS --project=${{ parameters.project }}"
+              fi
+
+              # Workers
+              ARGS="$ARGS --workers=${{ parameters.workers }}"
+
+              # Retries
+              ARGS="$ARGS --retries=${{ parameters.retries }}"
+
+              # Shard
+              SHARD="${{ parameters.shard }}"
+              if [ -n "$SHARD" ]; then
+                ARGS="$ARGS --shard=$SHARD"
+              fi
+
+              # Tags
+              TAGS="${{ parameters.tags }}"
+              if [ -n "$TAGS" ]; then
+                ARGS="$ARGS --grep=\"$TAGS\""
+              fi
+
+              # Base URL override
+              if [ -n "${{ parameters.baseUrlOverride }}" ]; then
+                export BASE_URL="${{ parameters.baseUrlOverride }}"
+              fi
+
+              npx playwright test $ARGS
+            displayName: 'Run Playwright tests'
+            continueOnError: true
+            env:
+              BASE_URL: ${{ parameters.baseUrlOverride }}
+
+          # ─── Reports ────────────────────────────────────────────────────
+          - script: |
+              npm install -g allure-commandline
+              if [ "${{ parameters.reportMode }}" = "single" ]; then
+                node scripts/allure-single.js
+              else
+                npx allure generate allure-results --clean -o reports/allure
+              fi
+            displayName: 'Generate Allure report'
+            condition: always()
+
+          # ─── Publish Artifacts ──────────────────────────────────────────
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish Allure results'
+            condition: always()
+            inputs:
+              targetPath: 'allure-results'
+              artifact: 'allure-results-${{ parameters.project }}'
+              publishLocation: 'pipeline'
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish Allure report'
+            condition: always()
+            inputs:
+              targetPath: 'reports'
+              artifact: 'allure-report-${{ parameters.project }}'
+              publishLocation: 'pipeline'
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish test results (traces, screenshots)'
+            condition: always()
+            inputs:
+              targetPath: 'test-results'
+              artifact: 'test-results-${{ parameters.project }}'
+              publishLocation: 'pipeline'
+
+          # ─── Publish Test Results to Azure (JUnit format) ───────────────
+          - task: PublishTestResults@2
+            displayName: 'Publish JUnit results'
+            condition: always()
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: 'test-results/junit-results.xml'
+              failTaskOnFailedTests: true
+              testRunTitle: 'Playwright — ${{ parameters.project }} (${{ parameters.environment }})'
