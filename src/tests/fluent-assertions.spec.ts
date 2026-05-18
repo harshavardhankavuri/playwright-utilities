@@ -1,40 +1,53 @@
-import { test, expect$, fluentExpectPage } from '../main/fixtures';
+import { test, expect } from './saucedemo/fixtures';
+import { configureAllure, allureStep, allureTagsFromTitle } from '../main/utils';
+import { fluentExpect, fluentExpectPage } from '../main/assertions';
 
-test.describe('Fluent Assertions - Locator', () => {
-  test.beforeEach(async ({ homePage }) => {
-    await homePage.goto();
+/**
+ * Fluent Assertions + Home Page tests — using SauceDemo inventory page.
+ */
+test.describe('Fluent Assertions - Locator @smoke', () => {
+  test.beforeEach(async ({ loginPage, inventoryPage }) => {
+    await configureAllure({
+      parentSuite: 'SauceDemo',
+      suite: 'Assertions',
+      subSuite: 'Fluent Expect',
+      tags: ['smoke', 'assertions'],
+    });
+    await loginPage.goto();
+    await loginPage.login('standard_user', 'secret_sauce');
   });
 
-  test('should chain visibility and text assertions', async ({ homePage }) => {
-    await expect$(homePage.heading)
+  test('should chain visibility and text assertions', async ({ page }) => {
+    await fluentExpect(page.locator('.app_logo'))
       .toBeVisible()
-      .toContainText('Playwright');
+      .toContainText('Swag Labs');
   });
 
-  test('should chain visibility, enabled, and clickable assertions', async ({ homePage }) => {
-    await expect$(homePage.getStartedLink)
+  test('should chain visibility, enabled, and clickable assertions', async ({ page }) => {
+    const cartLink = page.locator('[data-test="shopping-cart-link"]');
+    await fluentExpect(cartLink)
       .toBeVisible()
       .toBeEnabled()
-      .toBeClickable()
-      .toContainText('Get started');
+      .toBeClickable();
   });
 
-  test('should chain CSS and attribute assertions', async ({ homePage }) => {
-    await expect$(homePage.getStartedLink)
+  test('should chain attribute assertions', async ({ page }) => {
+    const sortDropdown = page.locator('[data-test="product-sort-container"]');
+    await fluentExpect(sortDropdown)
       .toBeVisible()
-      .toHaveAttribute('href')
-      .toHaveCss('display', 'block');
+      .toHaveAttribute('data-test', 'product-sort-container');
   });
 
   test('should support negation in chain', async ({ page }) => {
     const nonExistent = page.locator('#does-not-exist');
-    await expect$(nonExistent)
+    await fluentExpect(nonExistent)
       .not.toBeVisible()
       .toBeHidden();
   });
 
-  test('should support custom satisfies assertion', async ({ homePage }) => {
-    await expect$(homePage.heading)
+  test('should support custom satisfies assertion', async ({ page }) => {
+    const logo = page.locator('.app_logo');
+    await fluentExpect(logo)
       .toBeVisible()
       .satisfies(async (locator) => {
         const box = await locator.boundingBox();
@@ -43,33 +56,34 @@ test.describe('Fluent Assertions - Locator', () => {
       });
   });
 
-  test('should assert element is in viewport', async ({ homePage }) => {
-    await expect$(homePage.heading)
+  test('should assert element is in viewport', async ({ page }) => {
+    await fluentExpect(page.locator('[data-test="title"]'))
       .toBeVisible()
       .toBeInViewport();
   });
-
-  test('should assert accessible name', async ({ homePage }) => {
-    await expect$(homePage.getStartedLink)
-      .toBeVisible()
-      .toHaveAccessibleName('Get started');
-  });
 });
 
-test.describe('Fluent Assertions - Page', () => {
-  test.beforeEach(async ({ homePage }) => {
-    await homePage.goto();
+test.describe('Fluent Assertions - Page @smoke', () => {
+  test.beforeEach(async ({ loginPage }) => {
+    await configureAllure({
+      parentSuite: 'SauceDemo',
+      suite: 'Assertions',
+      subSuite: 'Page Expect',
+      tags: ['smoke', 'assertions'],
+    });
+    await loginPage.goto();
+    await loginPage.login('standard_user', 'secret_sauce');
   });
 
   test('should chain page title and URL assertions', async ({ page }) => {
     await fluentExpectPage(page)
-      .toHaveTitle(/Playwright/)
-      .toHaveURL(/playwright\.dev/);
+      .toHaveTitle('Swag Labs')
+      .toHaveURL(/inventory/);
   });
 
   test('should support negation on page assertions', async ({ page }) => {
     await fluentExpectPage(page)
-      .not.toHaveTitle('This is not the title')
-      .toHaveURL(/playwright\.dev/);
+      .not.toHaveTitle('Wrong Title')
+      .toHaveURL(/inventory/);
   });
 });

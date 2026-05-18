@@ -70,6 +70,9 @@ test.describe('Visual Snapshots — Single Baseline @visual', () => {
   });
 
   test('cart icon should match baseline when empty', async ({ page }) => {
+    // Ensure we're on a fresh page with empty cart
+    await page.goto('https://www.saucedemo.com/inventory.html');
+    await page.waitForLoadState('networkidle');
     const cartContainer = page.locator('[data-test="shopping-cart-link"]');
 
     await allureStep('Compare empty cart icon', async () => {

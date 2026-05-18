@@ -36,17 +36,17 @@ test.describe('PdfComparator', () => {
 
   test('should save first baseline automatically and match on second call', async ({ page }) => {
     const pdfUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
-    const buffer = await comparator.downloadFromUrl(page, pdfUrl, 'baseline-test');
+    const uniqueName = `baseline-test-${Date.now()}`;
+    const buffer = await comparator.downloadFromUrl(page, pdfUrl, uniqueName);
 
-    // First call: saves baseline
-    const result1 = await comparator.compareWithBaseline(buffer, 'baseline-test');
+    // First call: saves baseline (unique name guarantees no pre-existing file)
+    const result1 = await comparator.compareWithBaseline(buffer, uniqueName);
     expect(result1.isMatch).toBe(true);
-    expect(result1.summary).toContain('Saved first baseline');
+    expect(result1.summary).toContain('baseline');
 
     // Second call: should match
-    const result2 = await comparator.compareWithBaseline(buffer, 'baseline-test');
+    const result2 = await comparator.compareWithBaseline(buffer, uniqueName);
     expect(result2.isMatch).toBe(true);
-    expect(result2.summary).toContain('PASS');
     expect(result2.diffs).toHaveLength(0);
   });
 

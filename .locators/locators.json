@@ -13,37 +13,10 @@
         "value": "css:href",
         "weight": 100,
         "source": "user"
-      },
-      {
-        "type": "role",
-        "value": "link",
-        "options": {
-          "name": "Get started"
-        },
-        "weight": 72,
-        "source": "auto"
-      },
-      {
-        "type": "text",
-        "value": "Get started",
-        "weight": 70,
-        "source": "auto"
-      },
-      {
-        "type": "css",
-        "value": "#__docusaurus_skipToContent_fallback > header > div > div > a",
-        "weight": 30,
-        "source": "auto"
-      },
-      {
-        "type": "xpath",
-        "value": "/html[1]/body[1]/div[1]/div[2]/header[1]/div[1]/div[1]/a[1]",
-        "weight": 20,
-        "source": "auto"
       }
     ],
-    "updatedAt": 1779097160002,
-    "pagePattern": "https://playwright.dev/"
+    "updatedAt": 1779109107836,
+    "pagePattern": "https://www.saucedemo.com/"
   },
   "home-heading": {
     "name": "home-heading",
@@ -53,22 +26,10 @@
         "value": "user-locator-0",
         "weight": 100,
         "source": "user"
-      },
-      {
-        "type": "css",
-        "value": "#__docusaurus_skipToContent_fallback > header > div > h1",
-        "weight": 30,
-        "source": "auto"
-      },
-      {
-        "type": "xpath",
-        "value": "/html[1]/body[1]/div[1]/div[2]/header[1]/div[1]/h1[1]",
-        "weight": 20,
-        "source": "auto"
       }
     ],
-    "updatedAt": 1779097160200,
-    "pagePattern": "https://playwright.dev/"
+    "updatedAt": 1779109110841,
+    "pagePattern": "https://www.saucedemo.com/"
   },
   "home-search-button": {
     "name": "home-search-button",
@@ -84,43 +45,10 @@
         "value": "css:class",
         "weight": 100,
         "source": "user"
-      },
-      {
-        "type": "role",
-        "value": "button",
-        "options": {
-          "name": "Search (Ctrl+K)"
-        },
-        "weight": 90,
-        "source": "auto"
-      },
-      {
-        "type": "label",
-        "value": "Search (Ctrl+K)",
-        "weight": 88,
-        "source": "auto"
-      },
-      {
-        "type": "text",
-        "value": "Search\nK",
-        "weight": 70,
-        "source": "auto"
-      },
-      {
-        "type": "css",
-        "value": "#__docusaurus > nav > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > button",
-        "weight": 30,
-        "source": "auto"
-      },
-      {
-        "type": "xpath",
-        "value": "/html[1]/body[1]/div[1]/nav[1]/div[1]/div[2]/div[2]/button[1]",
-        "weight": 20,
-        "source": "auto"
       }
     ],
-    "updatedAt": 1779097160256,
-    "pagePattern": "https://playwright.dev/"
+    "updatedAt": 1779109113860,
+    "pagePattern": "https://www.saucedemo.com/"
   },
   "login-username": {
     "name": "login-username",
@@ -168,7 +96,7 @@
         "source": "auto"
       }
     ],
-    "updatedAt": 1779101223828,
+    "updatedAt": 1779113783655,
     "pagePattern": "https://www.saucedemo.com/"
   },
   "login-password": {
@@ -217,7 +145,7 @@
         "source": "auto"
       }
     ],
-    "updatedAt": 1779101223874,
+    "updatedAt": 1779113783988,
     "pagePattern": "https://www.saucedemo.com/"
   },
   "login-submit": {
@@ -260,7 +188,7 @@
         "source": "auto"
       }
     ],
-    "updatedAt": 1779101223930,
+    "updatedAt": 1779113784228,
     "pagePattern": "https://www.saucedemo.com/"
   }
 }
