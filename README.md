@@ -52,6 +52,7 @@ npm run report:allure:single      # Generate single-file Allure report
 |---------|---------|
 | **SmartLocator** | Self-healing locators with weighted strategies |
 | **Fluent Assertions** | Chainable `expect$()` covering all Playwright assertions |
+| **Visual Regression** | Enhanced snapshot comparison with masking |
 | **Snapshot Manager** | Multi-baseline visual regression (max 4 per snapshot) |
 | **Screenshot Comparator** | Intelligent diff classification (AA, alignment, structural) |
 | **API Client** | Typed HTTP helpers with validation |
@@ -123,6 +124,21 @@ const result = await snapshots.assertScreenshot(page, {
 });
 
 // Update baselines: UPDATE_SNAPSHOTS=true npx playwright test
+```
+
+### Visual Regression with Masking
+
+```typescript
+const visual = new VisualRegression();
+
+// Mask dynamic elements, selectors, or pixel regions
+await visual.assertPage(page, {
+  name: 'dashboard',
+  testFilePath: __filename,
+  mask: [page.locator('.timestamp')],           // Hide by Locator
+  maskSelectors: ['iframe', '.ad-banner'],      // Hide by CSS selector
+  maskRegions: [{ x: 10, y: 50, width: 200, height: 30 }], // Black out area
+});
 ```
 
 Baselines stored in `__snapshots__/<spec-file>/<name>/baseline-N.png` and committed to git for CI.
@@ -197,6 +213,7 @@ All three pipelines support configurable parameters (environment, browser, worke
 |---------|-------|
 | SmartLocator | [`docs/smart-locator.md`](docs/smart-locator.md) |
 | Fluent Assertions | [`docs/fluent-assertions.md`](docs/fluent-assertions.md) |
+| Visual Regression | [`docs/visual-regression.md`](docs/visual-regression.md) |
 | Snapshot Manager | [`docs/snapshot-manager.md`](docs/snapshot-manager.md) |
 | Screenshot Comparator | [`docs/screenshot-comparator.md`](docs/screenshot-comparator.md) |
 | API Client | [`docs/api-client.md`](docs/api-client.md) |

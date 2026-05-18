@@ -178,3 +178,11 @@ export {
   SoftValueAssert,
   type SoftFailure,
 } from './soft-assertions';
+
+// Visual Regression (enhanced snapshot comparison with masking)
+export {
+  VisualRegression,
+  type VisualRegressionOptions,
+  type VisualRegressionResult,
+  type MaskRegion,
+} from './visual-regression';
