@@ -125,3 +125,33 @@ export {
   type HealingResult,
   type SmartLocatorOptions,
 } from './smart-locator';
+
+// Allure helpers (suite hierarchy, tags, steps, metadata)
+export {
+  allureSuite,
+  allureParentSuite,
+  allureSuiteLabel,
+  allureSubSuite,
+  allureBehavior,
+  allureTags,
+  allureTag,
+  allureTagsFromTitle,
+  allureSeverity,
+  allureOwner,
+  allureDescription,
+  allureLink,
+  allureIssue,
+  allureTms,
+  allureLabel,
+  allureStep,
+  allureLogStep,
+  allureAttachText,
+  allureAttachJson,
+  allureAttachFile,
+  allureParameter,
+  configureAllure,
+  type AllureSuiteConfig,
+  type AllureBehaviorConfig,
+  type AllureTestConfig,
+  type AllureSeverity,
+} from './allure-helpers';
