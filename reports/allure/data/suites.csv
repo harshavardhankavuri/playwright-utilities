@@ -1,0 +1,4 @@
+"DESCRIPTION","DURATION IN MS","NAME","PARENT SUITE","START TIME","STATUS","STOP TIME","SUB SUITE","SUITE","TEST CLASS","TEST METHOD"
+"","1435","should navigate to Get Started page","chromium","2026-05-17","passed","2026-05-17","Home Page","home.spec.ts","",""
+"","1344","should have correct page title","chromium","2026-05-17","passed","2026-05-17","Home Page","home.spec.ts","",""
+"","1381","should display the main heading","chromium","2026-05-17","passed","2026-05-17","Home Page","home.spec.ts","",""
