@@ -17,7 +17,7 @@
     "report:allure:generate:single": "node scripts/allure-single.js",
     "report:allure:open": "npx allure open reports/allure",
     "report:allure": "npm run report:allure:generate && npm run report:allure:open",
-    "report:allure:single": "npm run report:allure:generate:single && npm run report:allure:open",
+    "report:allure:single": "npm run report:allure:generate:single && npx allure open reports/allure-single",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
     "format": "prettier --write \"**/*.{ts,json,md}\"",

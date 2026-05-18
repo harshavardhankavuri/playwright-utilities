@@ -16,7 +16,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const ALLURE_RESULTS = path.resolve('allure-results');
-const ALLURE_REPORT = path.resolve('reports', 'allure');
+const ALLURE_REPORT = path.resolve('reports', 'allure-single');
 const TEMP_RESULTS = path.resolve('allure-results-single');
 
 // File extensions to exclude from the single report (trace, video)
@@ -79,9 +79,9 @@ function main() {
 
   console.log(`[allure-single] Removed ${removedFiles.length} trace/video file(s) from temp results`);
 
-  // Step 4: Generate Allure report from the cleaned temp directory
+  // Step 4: Generate Allure report as a SINGLE HTML file from the cleaned temp directory
   try {
-    execSync(`npx allure generate "${TEMP_RESULTS}" --clean -o "${ALLURE_REPORT}"`, {
+    execSync(`npx allure generate "${TEMP_RESULTS}" --single-file --clean -o "${ALLURE_REPORT}"`, {
       stdio: 'inherit',
     });
   } catch (err) {
@@ -92,8 +92,9 @@ function main() {
   // Step 5: Clean up temp directory
   fs.rmSync(TEMP_RESULTS, { recursive: true });
 
-  console.log(`[allure-single] ✅ Report generated at: ${ALLURE_REPORT}`);
+  console.log(`[allure-single] ✅ Single-file report generated at: ${path.join(ALLURE_REPORT, 'index.html')}`);
   console.log('[allure-single] Original allure-results (with traces) preserved.');
+  console.log('[allure-single] Share the single index.html file — no server needed to view it.');
 }
 
 function stripAttachmentsFromSteps(steps) {
