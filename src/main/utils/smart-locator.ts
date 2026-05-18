@@ -430,9 +430,9 @@ export class SmartLocator {
             parts.unshift(selector);
             break;
           }
-          const parent = current.parentElement;
-          if (parent) {
-            const siblings = Array.from(parent.children).filter(
+          const parentEl: Element | null = current.parentElement;
+          if (parentEl) {
+            const siblings = Array.from(parentEl.children).filter(
               (c) => c.tagName === current!.tagName,
             );
             if (siblings.length > 1) {
@@ -441,7 +441,7 @@ export class SmartLocator {
             }
           }
           parts.unshift(selector);
-          current = parent;
+          current = parentEl;
         }
         return parts.join(' > ');
       }

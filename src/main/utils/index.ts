@@ -155,3 +155,26 @@ export {
   type AllureTestConfig,
   type AllureSeverity,
 } from './allure-helpers';
+
+// API Client (typed HTTP helpers for API testing)
+export {
+  ApiClient,
+  type ApiClientOptions,
+  type ApiResponse,
+  type RequestOptions,
+} from './api-client';
+
+// Test Data Factory (realistic fake data generation)
+export {
+  TestDataFactory,
+  testData,
+} from './test-data-factory';
+
+// Soft Assertions (collect all failures, report at end)
+export {
+  SoftAssert,
+  SoftLocatorAssert,
+  SoftPageAssert,
+  SoftValueAssert,
+  type SoftFailure,
+} from './soft-assertions';
