@@ -94,12 +94,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
@@ -165,7 +165,7 @@ jobs:
 
       - name: Upload Allure single-file report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: allure-single-report-${{ github.event.inputs.project || 'chromium' }}
           path: reports/allure-single/index.html
@@ -173,7 +173,7 @@ jobs:
 
       - name: Upload Playwright HTML report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: playwright-html-report-${{ github.event.inputs.project || 'chromium' }}
           path: reports/html/
@@ -181,7 +181,7 @@ jobs:
 
       - name: Upload Allure results (raw, with traces)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: allure-results-${{ github.event.inputs.project || 'chromium' }}${{ matrix.shard && format('-shard-{0}', matrix.shard) || '' }}
           path: allure-results/
@@ -189,7 +189,7 @@ jobs:
 
       - name: Upload test results (traces, screenshots, videos)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: test-results-${{ github.event.inputs.project || 'chromium' }}${{ matrix.shard && format('-shard-{0}', matrix.shard) || '' }}
           path: test-results/
