@@ -144,9 +144,9 @@ export class ApiClient {
   /**
    * Assert response body contains expected fields.
    */
-  expectBodyContains<T extends Record<string, unknown>>(
+  expectBodyContains<T>(
     response: ApiResponse<T>,
-    fields: Partial<T>,
+    fields: Partial<Record<string, unknown>>,
   ): ApiResponse<T> {
     for (const [key, expected] of Object.entries(fields)) {
       const actual = (response.body as Record<string, unknown>)[key];
