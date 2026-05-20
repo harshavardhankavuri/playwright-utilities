@@ -1,5 +1,18 @@
 // Core test helpers
-export { delay, takeScreenshot, randomString, randomEmail } from './test-helpers';
+export {
+  delay,
+  takeScreenshot,
+  randomString,
+  randomInt,
+  randomEmail,
+  randomUUID,
+  slugify,
+  pollUntil,
+  chunk,
+  deepClone,
+  pick,
+  omit,
+} from './test-helpers';
 
 // Screenshot comparison (advanced pixel-level analysis)
 export {
@@ -52,6 +65,8 @@ export {
   retryAction,
   waitForUrl,
   waitForDownload,
+  waitForCondition,
+  waitForText,
 } from './wait-helpers';
 
 // Auth helpers (storage state management, login flows)
@@ -87,7 +102,10 @@ export {
   scrollToBottom,
   scrollToTop,
   collectConsoleErrors,
+  collectConsoleWarnings,
+  collectNetworkErrors,
   getViewportSize,
+  setViewport,
   takeFullPageScreenshot,
   VIEWPORTS,
 } from './visual-helpers';
@@ -218,3 +236,39 @@ export {
   copyFile,
   copyFileAsync,
 } from './file-helpers';
+
+// Environment Helpers (type-safe env var access, config builder, env detection)
+export {
+  requireEnv,
+  getEnv,
+  getEnvInt,
+  getEnvBool,
+  getEnvArray,
+  buildConfig,
+  isEnv,
+  ENV,
+  IS_CI,
+  IS_DEBUG,
+  UPDATE_SNAPSHOTS,
+  type ConfigField,
+} from './env-helpers';
+
+// Keyboard Helpers (shortcuts, tab navigation, focus order, form interaction)
+export {
+  MOD,
+  pressShortcut,
+  selectAll,
+  copy,
+  paste,
+  cut,
+  undo,
+  redo,
+  tabForward,
+  tabBackward,
+  getFocusedElementInfo,
+  verifyTabOrder,
+  typeInto,
+  submitByEnter,
+  pressEscape,
+  navigateWithArrows,
+} from './keyboard-helpers';

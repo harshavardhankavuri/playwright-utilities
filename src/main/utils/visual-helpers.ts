@@ -115,3 +115,67 @@ export async function takeFullPageScreenshot(
   await page.screenshot({ path: filePath, fullPage: true });
   return filePath;
 }
+
+/**
+ * Collect all console warnings that occurred on the page.
+ *
+ * Usage:
+ *   const warnings = collectConsoleWarnings(page);
+ *   // ... test actions ...
+ *   expect(warnings.get()).toHaveLength(0);
+ */
+export function collectConsoleWarnings(page: Page): { get: () => string[]; clear: () => void } {
+  const warnings: string[] = [];
+
+  page.on('console', (msg) => {
+    if (msg.type() === 'warning') {
+      warnings.push(msg.text());
+    }
+  });
+
+  return {
+    get: () => [...warnings],
+    clear: () => { warnings.length = 0; },
+  };
+}
+
+/**
+ * Collect all failed network requests (4xx/5xx responses).
+ *
+ * Usage:
+ *   const failures = collectNetworkErrors(page);
+ *   // ... test actions ...
+ *   expect(failures.get()).toHaveLength(0);
+ */
+export function collectNetworkErrors(page: Page): {
+  get: () => Array<{ url: string; status: number }>;
+  clear: () => void;
+} {
+  const failures: Array<{ url: string; status: number }> = [];
+
+  page.on('response', (response) => {
+    if (response.status() >= 400) {
+      failures.push({ url: response.url(), status: response.status() });
+    }
+  });
+
+  return {
+    get: () => [...failures],
+    clear: () => { failures.length = 0; },
+  };
+}
+
+/**
+ * Set the viewport to a specific size or a named preset.
+ *
+ * Usage:
+ *   await setViewport(page, 'mobile');
+ *   await setViewport(page, { width: 1280, height: 720 });
+ */
+export async function setViewport(
+  page: Page,
+  size: keyof typeof VIEWPORTS | { width: number; height: number },
+): Promise<void> {
+  const dimensions = typeof size === 'string' ? VIEWPORTS[size] : size;
+  await page.setViewportSize(dimensions);
+}

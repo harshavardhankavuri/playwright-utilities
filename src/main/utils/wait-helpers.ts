@@ -163,3 +163,50 @@ export async function waitForDownload(
 
   return filePath!;
 }
+
+/**
+ * Wait for a custom condition to become true by polling.
+ * Useful when Playwright's built-in waits don't cover the scenario.
+ *
+ * Usage:
+ *   await waitForCondition(async () => {
+ *     const count = await page.locator('.item').count();
+ *     return count > 5;
+ *   }, { timeout: 10_000, interval: 500 });
+ */
+export async function waitForCondition(
+  condition: () => boolean | Promise<boolean>,
+  options?: { timeout?: number; interval?: number; message?: string },
+): Promise<void> {
+  const timeout = options?.timeout ?? 10_000;
+  const interval = options?.interval ?? 250;
+  const deadline = Date.now() + timeout;
+
+  while (Date.now() < deadline) {
+    if (await condition()) return;
+    await new Promise((r) => setTimeout(r, interval));
+  }
+
+  throw new Error(
+    options?.message ?? `waitForCondition timed out after ${timeout}ms`,
+  );
+}
+
+/**
+ * Wait for an element to contain specific text (case-insensitive substring match).
+ * Useful when you need partial text matching with a custom timeout.
+ *
+ * Usage:
+ *   await waitForText(page.locator('.status'), 'success', { timeout: 15_000 });
+ */
+export async function waitForText(
+  locator: Locator,
+  text: string,
+  options?: { timeout?: number; ignoreCase?: boolean },
+): Promise<void> {
+  const timeout = options?.timeout ?? 10_000;
+  const pattern = options?.ignoreCase !== false
+    ? new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+    : text;
+  await expect(locator).toContainText(pattern, { timeout });
+}
