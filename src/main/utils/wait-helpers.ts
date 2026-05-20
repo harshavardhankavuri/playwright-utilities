@@ -5,7 +5,168 @@ import { type Page, type Locator, expect } from '@playwright/test';
  *
  * These complement Playwright's built-in auto-waiting with higher-level
  * patterns for complex scenarios (API responses, animations, DOM stability).
+ *
+ * BrowserStack / remote grid note:
+ * All waits use explicit timeouts and throw on expiry so tests never hang
+ * in a pending state on remote grids. Raw setTimeout loops are avoided in
+ * favour of locator.waitFor() which propagates errors correctly over CDP.
  */
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ELEMENT WAITS  (locator.waitFor() based — safe on BrowserStack)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Wait for an element to reach a specific DOM state.
+ *
+ * Wraps locator.waitFor() with an explicit timeout so the test always
+ * throws (and fails cleanly) rather than hanging on remote grids.
+ *
+ * States:
+ *   'attached'  — element exists in DOM (default)
+ *   'detached'  — element removed from DOM
+ *   'visible'   — element is visible and not hidden
+ *   'hidden'    — element is hidden or detached
+ *
+ * Usage:
+ *   await waitFor(page.locator('.spinner'), 'hidden');
+ *   await waitFor(page.locator('.modal'), 'visible', { timeout: 10_000 });
+ */
+export async function waitFor(
+  locator: Locator,
+  state: 'attached' | 'detached' | 'visible' | 'hidden' = 'visible',
+  options?: { timeout?: number },
+): Promise<void> {
+  await locator.waitFor({ state, timeout: options?.timeout ?? 15_000 });
+}
+
+/**
+ * Wait for an element to be visible.
+ * Shorthand for waitFor(locator, 'visible').
+ */
+export async function waitForVisible(
+  locator: Locator,
+  options?: { timeout?: number },
+): Promise<void> {
+  await locator.waitFor({ state: 'visible', timeout: options?.timeout ?? 15_000 });
+}
+
+/**
+ * Wait for an element to be hidden or removed from the DOM.
+ * Shorthand for waitFor(locator, 'hidden').
+ *
+ * Usage:
+ *   await waitForHidden(page.locator('.loading-spinner'));
+ */
+export async function waitForHidden(
+  locator: Locator,
+  options?: { timeout?: number },
+): Promise<void> {
+  await locator.waitFor({ state: 'hidden', timeout: options?.timeout ?? 15_000 });
+}
+
+/**
+ * Wait for an element to be attached to the DOM (not necessarily visible).
+ * Shorthand for waitFor(locator, 'attached').
+ */
+export async function waitForAttached(
+  locator: Locator,
+  options?: { timeout?: number },
+): Promise<void> {
+  await locator.waitFor({ state: 'attached', timeout: options?.timeout ?? 15_000 });
+}
+
+/**
+ * Wait for an element to be detached from the DOM.
+ * Shorthand for waitFor(locator, 'detached').
+ *
+ * Usage:
+ *   await waitForDetached(page.locator('.toast-notification'));
+ */
+export async function waitForDetached(
+  locator: Locator,
+  options?: { timeout?: number },
+): Promise<void> {
+  await locator.waitFor({ state: 'detached', timeout: options?.timeout ?? 15_000 });
+}
+
+/**
+ * Wait for an element to become stable (no layout shifts) before interacting.
+ *
+ * Uses locator.waitFor() to confirm the element is attached first, then
+ * polls its bounding box. Throws with a clear message if the element never
+ * stabilises — prevents silent hangs on BrowserStack.
+ */
+export async function waitForElementStable(
+  locator: Locator,
+  options?: { timeout?: number; interval?: number },
+): Promise<void> {
+  const timeout = options?.timeout ?? 5_000;
+  const interval = options?.interval ?? 200;
+
+  // Ensure element is in the DOM before polling — throws if not found
+  await locator.waitFor({ state: 'attached', timeout });
+
+  const deadline = Date.now() + timeout;
+  let lastBox = await locator.boundingBox();
+
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, interval));
+    const currentBox = await locator.boundingBox();
+
+    if (
+      lastBox &&
+      currentBox &&
+      lastBox.x === currentBox.x &&
+      lastBox.y === currentBox.y &&
+      lastBox.width === currentBox.width &&
+      lastBox.height === currentBox.height
+    ) {
+      return; // Stable
+    }
+    lastBox = currentBox;
+  }
+
+  throw new Error(
+    `waitForElementStable: element did not stabilise within ${timeout}ms`,
+  );
+}
+
+/**
+ * Wait for a specific number of elements to appear.
+ * Useful for lists that load incrementally.
+ */
+export async function waitForCount(
+  locator: Locator,
+  count: number,
+  options?: { timeout?: number },
+): Promise<void> {
+  await expect(locator).toHaveCount(count, { timeout: options?.timeout ?? 10_000 });
+}
+
+/**
+ * Wait for an element to contain specific text (case-insensitive substring match).
+ * Useful when you need partial text matching with a custom timeout.
+ *
+ * Usage:
+ *   await waitForText(page.locator('.status'), 'success', { timeout: 15_000 });
+ */
+export async function waitForText(
+  locator: Locator,
+  text: string,
+  options?: { timeout?: number; ignoreCase?: boolean },
+): Promise<void> {
+  const timeout = options?.timeout ?? 10_000;
+  const pattern =
+    options?.ignoreCase !== false
+      ? new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+      : text;
+  await expect(locator).toContainText(pattern, { timeout });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PAGE / NETWORK WAITS
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Wait for a network response matching a URL pattern and return its JSON body.
@@ -25,10 +186,13 @@ export async function waitForApiResponse<T = unknown>(
   const [response] = await Promise.all([
     page.waitForResponse(
       (res) => {
-        const urlMatch = typeof urlPattern === 'string'
-          ? res.url().includes(urlPattern)
-          : urlPattern.test(res.url());
-        const statusMatch = options?.status ? res.status() === options.status : res.ok();
+        const urlMatch =
+          typeof urlPattern === 'string'
+            ? res.url().includes(urlPattern)
+            : urlPattern.test(res.url());
+        const statusMatch = options?.status
+          ? res.status() === options.status
+          : res.ok();
         return urlMatch && statusMatch;
       },
       { timeout: options?.timeout ?? 15_000 },
@@ -46,87 +210,10 @@ export async function waitForNetworkIdle(
   page: Page,
   options?: { timeout?: number; idleTime?: number },
 ): Promise<void> {
-  await page.waitForLoadState('networkidle');
-  // Additional idle time to ensure all async rendering is complete
+  await page.waitForLoadState('networkidle', { timeout: options?.timeout ?? 30_000 });
   if (options?.idleTime) {
     await page.waitForTimeout(options.idleTime);
   }
-}
-
-/**
- * Wait for an element to become stable (no layout shifts) before interacting.
- * Checks that the element's bounding box doesn't change over a short interval.
- */
-export async function waitForElementStable(
-  locator: Locator,
-  options?: { timeout?: number; interval?: number },
-): Promise<void> {
-  const timeout = options?.timeout ?? 5_000;
-  const interval = options?.interval ?? 200;
-  const startTime = Date.now();
-
-  let lastBox = await locator.boundingBox();
-
-  while (Date.now() - startTime < timeout) {
-    await new Promise((r) => setTimeout(r, interval));
-    const currentBox = await locator.boundingBox();
-
-    if (
-      lastBox &&
-      currentBox &&
-      lastBox.x === currentBox.x &&
-      lastBox.y === currentBox.y &&
-      lastBox.width === currentBox.width &&
-      lastBox.height === currentBox.height
-    ) {
-      return; // Stable
-    }
-    lastBox = currentBox;
-  }
-}
-
-/**
- * Wait for a specific number of elements to appear.
- * Useful for lists that load incrementally.
- */
-export async function waitForCount(
-  locator: Locator,
-  count: number,
-  options?: { timeout?: number },
-): Promise<void> {
-  await expect(locator).toHaveCount(count, { timeout: options?.timeout ?? 10_000 });
-}
-
-/**
- * Retry an action until it succeeds or times out.
- * Useful for flaky interactions that may need multiple attempts.
- *
- * Usage:
- *   await retryAction(async () => {
- *     await page.click('button#submit');
- *     await expect(page.locator('.success')).toBeVisible();
- *   }, { retries: 3, delay: 1000 });
- */
-export async function retryAction(
-  action: () => Promise<void>,
-  options?: { retries?: number; delay?: number },
-): Promise<void> {
-  const retries = options?.retries ?? 3;
-  const delay = options?.delay ?? 500;
-  let lastError: Error | undefined;
-
-  for (let i = 0; i <= retries; i++) {
-    try {
-      await action();
-      return;
-    } catch (error) {
-      lastError = error as Error;
-      if (i < retries) {
-        await new Promise((r) => setTimeout(r, delay));
-      }
-    }
-  }
-  throw lastError;
 }
 
 /**
@@ -164,15 +251,52 @@ export async function waitForDownload(
   return filePath!;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POLLING / RETRY WAITS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Retry an action until it succeeds or times out.
+ * Useful for flaky interactions that may need multiple attempts.
+ *
+ * Usage:
+ *   await retryAction(async () => {
+ *     await page.click('button#submit');
+ *     await expect(page.locator('.success')).toBeVisible();
+ *   }, { retries: 3, delay: 1000 });
+ */
+export async function retryAction(
+  action: () => Promise<void>,
+  options?: { retries?: number; delay?: number },
+): Promise<void> {
+  const retries = options?.retries ?? 3;
+  const delay = options?.delay ?? 500;
+  let lastError: Error | undefined;
+
+  for (let i = 0; i <= retries; i++) {
+    try {
+      await action();
+      return;
+    } catch (error) {
+      lastError = error as Error;
+      if (i < retries) {
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+  throw lastError;
+}
+
 /**
  * Wait for a custom condition to become true by polling.
- * Useful when Playwright's built-in waits don't cover the scenario.
+ *
+ * Always throws on timeout — prevents tests from hanging on BrowserStack.
  *
  * Usage:
  *   await waitForCondition(async () => {
  *     const count = await page.locator('.item').count();
  *     return count > 5;
- *   }, { timeout: 10_000, interval: 500 });
+ *   }, { timeout: 10_000, interval: 500, message: 'Expected more than 5 items' });
  */
 export async function waitForCondition(
   condition: () => boolean | Promise<boolean>,
@@ -190,23 +314,4 @@ export async function waitForCondition(
   throw new Error(
     options?.message ?? `waitForCondition timed out after ${timeout}ms`,
   );
-}
-
-/**
- * Wait for an element to contain specific text (case-insensitive substring match).
- * Useful when you need partial text matching with a custom timeout.
- *
- * Usage:
- *   await waitForText(page.locator('.status'), 'success', { timeout: 15_000 });
- */
-export async function waitForText(
-  locator: Locator,
-  text: string,
-  options?: { timeout?: number; ignoreCase?: boolean },
-): Promise<void> {
-  const timeout = options?.timeout ?? 10_000;
-  const pattern = options?.ignoreCase !== false
-    ? new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
-    : text;
-  await expect(locator).toContainText(pattern, { timeout });
 }

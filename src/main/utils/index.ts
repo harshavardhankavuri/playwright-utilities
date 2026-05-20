@@ -58,6 +58,11 @@ export {
 
 // Wait helpers (API response waits, element stability, retry patterns)
 export {
+  waitFor,
+  waitForVisible,
+  waitForHidden,
+  waitForAttached,
+  waitForDetached,
   waitForApiResponse,
   waitForNetworkIdle,
   waitForElementStable,
@@ -253,7 +258,7 @@ export {
   type ConfigField,
 } from './env-helpers';
 
-// Keyboard Helpers (shortcuts, tab navigation, focus order, form interaction)
+// Keyboard Helpers (shortcuts, tab navigation, focus order, form interaction, clipboard)
 export {
   MOD,
   pressShortcut,
@@ -263,6 +268,10 @@ export {
   cut,
   undo,
   redo,
+  setClipboard,
+  readClipboard,
+  setClipboardAndPaste,
+  getClipboardAfterAction,
   tabForward,
   tabBackward,
   getFocusedElementInfo,
