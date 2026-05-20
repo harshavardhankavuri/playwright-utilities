@@ -13,13 +13,11 @@
     "sourceMap": true,
     "outDir": "./dist",
     "rootDir": ".",
-    "ignoreDeprecations": "6.0",
-    "baseUrl": ".",
     "paths": {
-      "@pages/*": ["src/main/pages/*"],
-      "@fixtures/*": ["src/main/fixtures/*"],
-      "@utils/*": ["src/main/utils/*"],
-      "@data/*": ["src/main/data/*"]
+      "@pages/*": ["./src/main/pages/*"],
+      "@fixtures/*": ["./src/main/fixtures/*"],
+      "@utils/*": ["./src/main/utils/*"],
+      "@data/*": ["./src/main/data/*"]
     }
   },
   "include": ["src/**/*.ts"],

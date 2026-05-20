@@ -281,3 +281,16 @@ export {
   pressEscape,
   navigateWithArrows,
 } from './keyboard-helpers';
+
+// Performance Helpers (Web Vitals + Navigation Timing, Allure + Playwright HTML report)
+export {
+  PerformanceCollector,
+  measurePagePerformance,
+  assertMetric,
+  type NavigationMetrics,
+  type WebVitals,
+  type PagePerformanceEntry,
+  type BudgetViolation,
+  type PerformanceBudget,
+  type PerformanceCollectorOptions,
+} from './performance-helpers';
