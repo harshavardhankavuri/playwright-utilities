@@ -4,7 +4,7 @@ import type { XRayMode, XRayUserConfig } from './types';
  * X-Ray Integration Configuration
  * ────────────────────────────────
  * This is the only file developers need to edit for static config.
- * All values can be overridden by environment variables (see .env.example).
+ * All values can be overridden by environment variables (see .env.xray).
  *
  * Environment variable reference:
  *
