@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import type { Logger, ResolvedConfig, XRayEvidence, XRayImportPayload } from '../types';
+import type { Logger, ResolvedConfig, XRayEvidence, XRayImportPayload, XRayTestResult } from '../types';
 
 /**
  * HTTP client for X-Ray / Jira REST APIs.
@@ -9,6 +9,7 @@ export class XRayClient {
   private jiraAxios: AxiosInstance;
   private cloudAxios: AxiosInstance | null = null;
   private runIdCache: Map<string, Map<string, string>> = new Map();
+  private linkedTestsCache: Map<string, Set<string>> = new Map();
   private config: ResolvedConfig;
   private log: Logger;
 
@@ -16,7 +17,6 @@ export class XRayClient {
     this.config = config;
     this.log = log;
 
-    // Build Jira REST axios instance based on auth type
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       Accept: 'application/json',
@@ -35,8 +35,7 @@ export class XRayClient {
         break;
       }
       case 'xray-client': {
-        // Jira calls still need basic/pat — xray-client is for X-Ray Cloud API only.
-        // If using xray-client, Jira REST calls won't have auth unless paired with env vars.
+        // Jira REST calls need basic/pat — xray-client is for X-Ray Cloud API only.
         break;
       }
     }
@@ -47,6 +46,8 @@ export class XRayClient {
       timeout: 30_000,
     });
   }
+
+  // ─── Authentication ──────────────────────────────────────────────────────
 
   /**
    * Authenticate with X-Ray Cloud (only for xray-client auth type).
@@ -85,6 +86,8 @@ export class XRayClient {
       return false;
     }
   }
+
+  // ─── Execution management ────────────────────────────────────────────────
 
   /**
    * Create a new Test Execution issue in Jira.
@@ -132,7 +135,64 @@ export class XRayClient {
   }
 
   /**
-   * Link test issues to an execution. Best-effort — logs warning on failure.
+   * Fetch all test keys already linked to an execution.
+   * Results are cached per execution key.
+   */
+  async getLinkedTestKeys(executionKey: string): Promise<Set<string>> {
+    if (this.linkedTestsCache.has(executionKey)) {
+      return this.linkedTestsCache.get(executionKey)!;
+    }
+
+    const linked = new Set<string>();
+
+    try {
+      let tests: Array<{ key?: string; testKey?: string }> = [];
+
+      if (this.config.xrayMode === 'cloud' && this.cloudAxios) {
+        const resp = await this.cloudAxios.get(`/testexec/${executionKey}/tests`);
+        tests = resp.data ?? [];
+      } else {
+        const resp = await this.jiraAxios.get(
+          `/rest/raven/1.0/api/testexec/${executionKey}/test`,
+        );
+        tests = resp.data ?? [];
+      }
+
+      for (const t of tests) {
+        const k = t.key ?? t.testKey;
+        if (k) linked.add(k);
+      }
+
+      this.log.debug(
+        `Execution ${executionKey} already has ${linked.size} linked test(s)`,
+      );
+    } catch (err) {
+      this.log.warn(
+        `Could not fetch linked tests for ${executionKey}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+
+    this.linkedTestsCache.set(executionKey, linked);
+    return linked;
+  }
+
+  /**
+   * Ensure a single test key is linked to the execution.
+   * Skips the API call if the key is already linked (uses cache).
+   */
+  async ensureTestLinked(executionKey: string, testKey: string): Promise<void> {
+    const linked = await this.getLinkedTestKeys(executionKey);
+    if (linked.has(testKey)) {
+      this.log.debug(`${testKey} already linked to ${executionKey} — skipping`);
+      return;
+    }
+
+    await this.addTestsToExecution(executionKey, [testKey]);
+    linked.add(testKey); // update cache
+  }
+
+  /**
+   * Link one or more test keys to an execution. Best-effort — logs warning on failure.
    */
   async addTestsToExecution(executionKey: string, testKeys: string[]): Promise<void> {
     if (testKeys.length === 0) return;
@@ -143,13 +203,12 @@ export class XRayClient {
           query: `mutation { addTestsToTestExecution(issueId: "${executionKey}", testIssueIds: ${JSON.stringify(testKeys)}) { addedTests warning } }`,
         });
       } else {
-        // Data Center REST endpoint
         await this.jiraAxios.post(
           `/rest/raven/1.0/api/testexec/${executionKey}/test`,
           { add: testKeys },
         );
       }
-      this.log.debug(`Linked ${testKeys.length} tests to ${executionKey}`);
+      this.log.debug(`Linked [${testKeys.join(', ')}] to ${executionKey}`);
     } catch (err) {
       this.log.warn(
         `Failed to link tests to execution: ${err instanceof Error ? err.message : err}`,
@@ -157,8 +216,27 @@ export class XRayClient {
     }
   }
 
+  // ─── Result import ───────────────────────────────────────────────────────
+
   /**
-   * Import test results into X-Ray.
+   * Import a single test result immediately after the test finishes.
+   * This is the per-test update path used by the new streaming flow.
+   */
+  async importSingleResult(
+    executionKey: string,
+    result: XRayTestResult,
+    info?: XRayImportPayload['info'],
+  ): Promise<boolean> {
+    const payload: XRayImportPayload = {
+      testExecutionKey: executionKey,
+      ...(info ? { info } : {}),
+      tests: [result],
+    };
+    return this.importResults(payload);
+  }
+
+  /**
+   * Import a batch of test results into X-Ray.
    * Returns true on success, false on failure.
    */
   async importResults(payload: XRayImportPayload): Promise<boolean> {
@@ -168,7 +246,7 @@ export class XRayClient {
       } else {
         await this.jiraAxios.post('/rest/raven/2.0/import/execution', payload);
       }
-      this.log.success(`Imported ${payload.tests.length} test results`);
+      this.log.success(`Imported ${payload.tests.length} test result(s)`);
       return true;
     } catch (err) {
       this.log.error(
@@ -177,6 +255,8 @@ export class XRayClient {
       return false;
     }
   }
+
+  // ─── Evidence ────────────────────────────────────────────────────────────
 
   /**
    * Attach evidence (screenshot) to a specific test run within an execution.
@@ -220,7 +300,6 @@ export class XRayClient {
     executionKey: string,
     testKey: string,
   ): Promise<string | null> {
-    // Check cache
     if (this.runIdCache.has(executionKey)) {
       const cached = this.runIdCache.get(executionKey)!;
       return cached.get(testKey) ?? null;
