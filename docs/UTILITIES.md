@@ -19,7 +19,8 @@ Complete documentation for every utility in the Playwright Utilities framework.
 11. [Auth Helpers](#11-auth-helpers)
 12. [Accessibility Helpers](#12-accessibility-helpers)
 13. [Visual Helpers](#13-visual-helpers)
-14. [X-Ray Jira Reporter](#14-x-ray-jira-reporter)
+14. [File Helpers](#14-file-helpers)
+15. [X-Ray Jira Reporter](#15-x-ray-jira-reporter)
 
 ---
 
@@ -610,7 +611,96 @@ const path = await takeFullPageScreenshot(page, 'homepage');
 
 ---
 
-## 14. X-Ray Jira Reporter
+## 14. File Helpers
+
+**File:** `src/main/utils/file-helpers.ts`
+**Purpose:** Read, write, parse JSON and text files, resolve and manipulate file paths.
+
+### Usage
+
+```typescript
+import {
+  readTextFile, readJsonFile, writeTextFile, writeJsonFile,
+  fileExists, directoryExists, resolveFromRoot, resolvePath,
+  getFileName, getFileExtension, listFiles, copyFile,
+} from '../main/utils';
+
+// Read text files
+const content = readTextFile('./data/sample.txt');
+const contentAsync = await readTextFileAsync('./data/sample.txt');
+
+// Read JSON with type safety
+interface TestData {
+  username: string;
+  password: string;
+}
+const testData = readJsonFile<TestData>('./test-data/users.json');
+
+// Write files
+writeTextFile('./output/report.txt', 'Test completed');
+writeJsonFile('./output/results.json', { passed: 10, failed: 2 });
+
+// Check existence
+if (fileExists('./config/test.json')) {
+  const config = readJsonFile('./config/test.json');
+}
+
+// Path resolution
+const configPath = resolveFromRoot('config', 'test.json');
+const dataPath = resolvePath('./data', 'users', 'user1.json');
+
+// Path manipulation
+const dir = getDirectory('/project/src/tests/login.spec.ts');  // '/project/src/tests'
+const fileName = getFileName('/path/file.txt');                 // 'file.txt'
+const fileNameNoExt = getFileName('/path/file.txt', false);    // 'file'
+const ext = getFileExtension('/path/file.txt');                // '.txt'
+
+// File operations
+createDirectory('./output/screenshots');
+copyFile('./templates/report.html', './output/report.html');
+deleteFile('./temp/old-file.txt');
+
+// List files
+const files = listFiles('./data');              // Non-recursive
+const allFiles = listFiles('./src', true);      // Recursive
+```
+
+### Common Use Cases
+
+```typescript
+// Load test data
+test('Load test data', async ({ page }) => {
+  const users = readJsonFile<User[]>(resolveFromRoot('test-data', 'users.json'));
+  await page.fill('#username', users[0].username);
+});
+
+// Environment-specific config
+function loadConfig(env: string) {
+  const configPath = resolveFromRoot('config', `${env}.json`);
+  if (!fileExists(configPath)) {
+    throw new Error(`Config not found: ${configPath}`);
+  }
+  return readJsonFile<Config>(configPath);
+}
+
+// Export test results
+test.afterAll(async () => {
+  const results = { passed: 45, failed: 5, timestamp: new Date().toISOString() };
+  createDirectory(resolveFromRoot('test-results'));
+  writeJsonFile(resolveFromRoot('test-results', 'summary.json'), results);
+});
+
+// Backup artifacts
+const timestamp = new Date().toISOString().replace(/:/g, '-');
+const backupPath = resolveFromRoot('archive', `report-${timestamp}.html`);
+copyFile('./output/report.html', backupPath);
+```
+
+**See [file-helpers.md](./file-helpers.md) for complete documentation.**
+
+---
+
+## 15. X-Ray Jira Reporter
 
 **File:** `src/main/utils/xray/reporter/xrayReporter.ts`
 **Purpose:** Push Playwright test results to X-Ray (Jira) — disabled by default.

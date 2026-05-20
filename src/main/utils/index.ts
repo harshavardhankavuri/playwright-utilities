@@ -22,6 +22,15 @@ export {
   type PdfTextDiff,
 } from './pdf-comparator';
 
+// Nested PDF handler (download PDFs from nested iframes with visual detection)
+export {
+  NestedPdfHandler,
+  type IframeNavigationPath,
+  type NestedPdfHandlerOptions,
+  type VisualIconClickOptions,
+  type IconMatchResult,
+} from './nested-pdf-handler';
+
 // Network interception, mocking, and HAR replay
 export {
   NetworkMocker,
@@ -180,3 +189,32 @@ export {
   type VisualRegressionResult,
   type MaskRegion,
 } from './visual-regression';
+
+// File Helpers (read/write JSON and text files, path resolution)
+export {
+  readTextFile,
+  readTextFileAsync,
+  readJsonFile,
+  readJsonFileAsync,
+  writeTextFile,
+  writeTextFileAsync,
+  writeJsonFile,
+  writeJsonFileAsync,
+  fileExists,
+  directoryExists,
+  resolveFromRoot,
+  resolvePath,
+  getDirectory,
+  getFileName,
+  getFileExtension,
+  joinPaths,
+  normalizePath,
+  getRelativePath,
+  createDirectory,
+  createDirectoryAsync,
+  deleteFile,
+  deleteFileAsync,
+  listFiles,
+  copyFile,
+  copyFileAsync,
+} from './file-helpers';
