@@ -21,7 +21,19 @@
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
     "format": "prettier --write \"**/*.{ts,json,md}\"",
-    "format:check": "prettier --check \"**/*.{ts,json,md}\""
+    "format:check": "prettier --check \"**/*.{ts,json,md}\"",
+    "k6:smoke":            "k6 run k6/tests/smoke.test.js",
+    "k6:load":             "k6 run k6/tests/load.test.js",
+    "k6:stress":           "k6 run k6/tests/stress.test.js",
+    "k6:spike":            "k6 run k6/tests/spike.test.js",
+    "k6:crud":             "k6 run k6/tests/crud.test.js",
+    "k6:batch":            "k6 run k6/tests/batch.test.js",
+    "k6:smoke:dashboard":  "cross-env K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_EXPORT=k6-report/smoke-dashboard.html k6 run k6/tests/smoke.test.js",
+    "k6:load:dashboard":   "cross-env K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_EXPORT=k6-report/load-dashboard.html k6 run k6/tests/load.test.js",
+    "k6:stress:dashboard": "cross-env K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_EXPORT=k6-report/stress-dashboard.html k6 run k6/tests/stress.test.js",
+    "k6:spike:dashboard":  "cross-env K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_EXPORT=k6-report/spike-dashboard.html k6 run k6/tests/spike.test.js",
+    "k6:crud:dashboard":   "cross-env K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_EXPORT=k6-report/crud-dashboard.html k6 run k6/tests/crud.test.js",
+    "k6:batch:dashboard":  "cross-env K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_EXPORT=k6-report/batch-dashboard.html k6 run k6/tests/batch.test.js"
   },
   "keywords": [
     "playwright",

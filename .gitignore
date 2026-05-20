@@ -11,3 +11,8 @@ env/.env.local
 .locators/
 __pdf-baselines__/
 *.log
+
+# k6 output
+k6/results/*.json
+k6/results/*.csv
+k6-report/*.html
