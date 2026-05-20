@@ -19,6 +19,15 @@ function envBool(key: string): boolean | undefined {
   return val === 'true' || val === '1';
 }
 
+function envArray(key: string): string[] | undefined {
+  const val = envStr(key);
+  if (!val) return undefined;
+  return val
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 // ─── Feature resolution ──────────────────────────────────────────────────────
 
 export function resolveFeatures(userConfig: XRayUserConfig): XRayFeatures {
@@ -91,29 +100,34 @@ function validate(config: ResolvedConfig): void {
   const errors: string[] = [];
 
   if (!config.jiraBaseUrl) {
-    errors.push('jiraBaseUrl is required');
+    errors.push('jiraBaseUrl is required (env: JIRA_BASE_URL)');
   }
   if (!config.projectKey) {
-    errors.push('projectKey is required');
+    errors.push('projectKey is required (env: JIRA_PROJECT_KEY)');
   }
 
   const validModes: XRayMode[] = ['cloud', 'dc'];
   if (!validModes.includes(config.xrayMode)) {
-    errors.push(`xrayMode must be one of: ${validModes.join(', ')}`);
+    errors.push(`xrayMode must be one of: ${validModes.join(', ')} (env: XRAY_MODE)`);
   }
 
   // Auth-specific validation
   switch (config.auth.type) {
     case 'basic':
-      if (!config.auth.email) errors.push('auth.email is required for basic auth');
-      if (!config.auth.apiToken) errors.push('auth.apiToken is required for basic auth');
+      if (!config.auth.email)
+        errors.push('auth.email is required for basic auth (env: JIRA_EMAIL)');
+      if (!config.auth.apiToken)
+        errors.push('auth.apiToken is required for basic auth (env: JIRA_API_TOKEN)');
       break;
     case 'pat':
-      if (!config.auth.token) errors.push('auth.token is required for PAT auth');
+      if (!config.auth.token)
+        errors.push('auth.token is required for PAT auth (env: JIRA_PAT)');
       break;
     case 'xray-client':
-      if (!config.auth.clientId) errors.push('auth.clientId is required for xray-client auth');
-      if (!config.auth.clientSecret) errors.push('auth.clientSecret is required for xray-client auth');
+      if (!config.auth.clientId)
+        errors.push('auth.clientId is required for xray-client auth (env: XRAY_CLIENT_ID)');
+      if (!config.auth.clientSecret)
+        errors.push('auth.clientSecret is required for xray-client auth (env: XRAY_CLIENT_SECRET)');
       break;
   }
 
@@ -129,20 +143,33 @@ export function resolveConfig(userConfig: XRayUserConfig): ResolvedConfig {
   const xrayMode: XRayMode = xrayModeRaw === 'dc' ? 'dc' : 'cloud';
 
   const resolved: ResolvedConfig = {
-    enabled: envBool('XRAY_ENABLED') ?? userConfig.enabled ?? false,
-    verbose: envBool('XRAY_VERBOSE') ?? userConfig.verbose ?? false,
-    jiraBaseUrl: envStr('JIRA_BASE_URL') ?? userConfig.jiraBaseUrl ?? '',
-    projectKey: envStr('JIRA_PROJECT_KEY') ?? userConfig.projectKey ?? '',
+    enabled:     envBool('XRAY_ENABLED')      ?? userConfig.enabled      ?? false,
+    verbose:     envBool('XRAY_VERBOSE')      ?? userConfig.verbose      ?? false,
+    jiraBaseUrl: envStr('JIRA_BASE_URL')      ?? userConfig.jiraBaseUrl  ?? '',
+    projectKey:  envStr('JIRA_PROJECT_KEY')   ?? userConfig.projectKey   ?? '',
     xrayMode,
     auth: resolveAuth(userConfig),
     features: resolveFeatures(userConfig),
-    executionSummary: userConfig.executionSummary ?? 'Playwright E2E — Automated Run',
-    executionDescription: userConfig.executionDescription ?? 'Automated test execution from Playwright',
-    testPlanKey: envStr('XRAY_TEST_PLAN_KEY') ?? userConfig.testPlanKey ?? '',
-    testEnvironments: userConfig.testEnvironments ?? [],
-    existingExecutionKey: envStr('XRAY_EXECUTION_KEY') ?? userConfig.existingExecutionKey ?? '',
-    assignee: envStr('XRAY_ASSIGNEE') ?? userConfig.assignee ?? '',
-    untrackedOutputFile: userConfig.untrackedOutputFile ?? 'reports/untracked-tests.txt',
+    executionSummary:
+      envStr('XRAY_EXECUTION_SUMMARY') ??
+      userConfig.executionSummary ??
+      'Playwright E2E — Automated Run',
+    executionDescription:
+      envStr('XRAY_EXECUTION_DESCRIPTION') ??
+      userConfig.executionDescription ??
+      'Automated test execution from Playwright',
+    testPlanKey:
+      envStr('XRAY_TEST_PLAN_KEY') ?? userConfig.testPlanKey ?? '',
+    testEnvironments:
+      envArray('XRAY_TEST_ENVIRONMENTS') ?? userConfig.testEnvironments ?? [],
+    existingExecutionKey:
+      envStr('XRAY_EXECUTION_KEY') ?? userConfig.existingExecutionKey ?? '',
+    assignee:
+      envStr('XRAY_ASSIGNEE') ?? userConfig.assignee ?? '',
+    untrackedOutputFile:
+      envStr('XRAY_UNTRACKED_OUTPUT') ??
+      userConfig.untrackedOutputFile ??
+      'reports/untracked-tests.txt',
   };
 
   // Only validate when enabled

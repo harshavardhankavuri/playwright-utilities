@@ -1,179 +1,381 @@
 # X-Ray Reporter
 
-**File:** `src/main/utils/xray/reporter/xrayReporter.ts`
+Playwright custom reporter that pushes test results to X-Ray (Jira). Supports Jira Cloud and Data Center, three auth strategies, and four independently toggleable features.
 
-## Overview
+## Table of Contents
 
-The X-Ray Reporter is a Playwright custom reporter that pushes test results to X-Ray (Jira). It creates test executions, updates test statuses, attaches failure screenshots, and reports untracked tests — all automatically at the end of a test run. Supports both Jira Cloud and Data Center deployments.
+- [How It Works](#how-it-works)
+- [Quick Setup](#quick-setup)
+- [Test Title Format](#test-title-format)
+- [Status Mapping](#status-mapping)
+- [Features](#features)
+- [Auth Strategies](#auth-strategies)
+- [Configuration Reference](#configuration-reference)
+- [Environment Variables](#environment-variables)
+- [playwright.config.ts](#playwrightconfigts)
+- [CI/CD Integration](#cicd-integration)
+- [File Structure](#file-structure)
+
+---
 
 ## How It Works
 
-The reporter implements Playwright's `Reporter` interface and operates in three phases:
-
-1. **onBegin** — Authenticates with X-Ray, creates (or reuses) a Test Execution issue in Jira, and pre-links all test keys found in the suite.
-2. **onTestEnd** — Extracts X-Ray test keys from the test title (e.g. `[PROJ-123]`), maps Playwright status to X-Ray status, and collects results.
-3. **onEnd** — Imports all results to X-Ray in a single API call, attaches screenshots for failed tests, writes an untracked tests report, and prints a summary.
-
-### Test Title Format
-
-X-Ray test keys are extracted from test titles using bracket notation:
+The reporter implements Playwright's `Reporter` interface and runs in three phases:
 
 ```
-test('[PROJ-123] should login successfully', ...)
-test('[PROJ-123][PROJ-456] covers multiple test cases', ...)
-test('[PROJ-100, PROJ-101] comma-separated keys', ...)
+onBegin
+  ├── Authenticate with X-Ray (if using xray-client auth)
+  ├── Create Test Execution issue in Jira  (if createExecution = true)
+  └── Pre-link all test keys found in the suite
+
+onTestEnd  (called for every test)
+  ├── Extract X-Ray keys from test title  e.g. [PROJ-123]
+  ├── Map Playwright status → X-Ray status
+  └── Collect result + failure attachments
+
+onEnd
+  ├── Import all results to X-Ray in one API call  (if updateTestStatus = true)
+  ├── Attach screenshots for failed tests           (if attachScreenshots = true)
+  ├── Write untracked tests report                  (if untrackedReport = true)
+  └── Print summary to console
 ```
 
-Tests without keys are reported as "untracked" in a separate file.
+---
 
-### Status Mapping
+## Quick Setup
 
-| Playwright Status | X-Ray Status |
-|-------------------|--------------|
-| `passed` | `PASS` |
-| `failed` | `FAIL` |
-| `timedOut` | `FAIL` |
-| `skipped` | `TODO` |
-| `interrupted` | `ABORTED` |
-
-## 4 Features (toggleable)
-
-| Feature | Description |
-|---------|-------------|
-| `createExecution` | Create a new Test Execution issue in Jira |
-| `updateTestStatus` | Import test results (PASS/FAIL) to X-Ray |
-| `attachScreenshots` | Attach failure screenshots as evidence |
-| `untrackedReport` | Write a report of tests without X-Ray keys |
-
-## Auth Strategies
-
-| Strategy | Use Case | Required Fields |
-|----------|----------|-----------------|
-| `basic` | Jira Cloud (email + API token) | `email`, `apiToken` |
-| `pat` | Jira Data Center (Personal Access Token) | `token` |
-| `xray-client` | X-Ray Cloud (client credentials) | `clientId`, `clientSecret` |
-
-## Configuration
-
-### xray.config.ts
+**1. Edit `src/main/utils/xray/xray.config.ts`:**
 
 ```typescript
 const xrayConfig: XRayUserConfig = {
   enabled: true,
-  verbose: true,
-  jiraBaseUrl: 'https://your-company.atlassian.net',
+  jiraBaseUrl: 'https://your-org.atlassian.net',
   projectKey: 'PROJ',
-  xrayMode: 'cloud',  // 'cloud' | 'dc'
-  auth: {
-    type: 'basic',
-    email: '',         // Override via XRAY_EMAIL env var
-    apiToken: '',      // Override via XRAY_API_TOKEN env var
-  },
+  xrayMode: 'cloud',
+  auth: { type: 'basic', email: '', apiToken: '' },
   features: {
     createExecution: true,
     updateTestStatus: true,
     attachScreenshots: true,
     untrackedReport: true,
   },
-  executionSummary: 'Playwright E2E — Automated Run',
-  executionDescription: 'Automated test execution from Playwright',
-  testPlanKey: 'PROJ-100',           // Link execution to a Test Plan
-  testEnvironments: ['staging'],     // Environment labels
-  existingExecutionKey: '',          // Reuse an existing execution (skip creation)
-  assignee: 'qa-bot',               // Assignee for the execution issue
-  untrackedOutputFile: 'reports/untracked-tests.txt',
 };
 ```
 
-### Environment Variables
-
-All sensitive values should be set via environment variables (override config file values):
+**2. Set credentials via environment variables (never commit secrets):**
 
 ```bash
-XRAY_ENABLED=true
-XRAY_JIRA_BASE_URL=https://your-company.atlassian.net
-XRAY_PROJECT_KEY=PROJ
-XRAY_MODE=cloud
+JIRA_EMAIL=qa@company.com
+JIRA_API_TOKEN=your-api-token
+```
 
-# Basic auth (Cloud)
-XRAY_EMAIL=qa@company.com
-XRAY_API_TOKEN=your-api-token
+**3. Tag your tests:**
 
-# PAT auth (Data Center)
-XRAY_PAT_TOKEN=your-personal-access-token
+```typescript
+test('[PROJ-123] should login successfully', async ({ page }) => { ... });
+```
 
-# X-Ray Client auth (Cloud)
+**4. Run:**
+
+```bash
+npx playwright test
+```
+
+---
+
+## Test Title Format
+
+X-Ray test keys are extracted from test titles using bracket notation. The project key prefix is case-sensitive and must be uppercase.
+
+```typescript
+// Single key
+test('[PROJ-123] should login', ...)
+
+// Multiple keys — separate brackets
+test('[PROJ-123][PROJ-456] login and verify dashboard', ...)
+
+// Multiple keys — comma-separated inside one bracket
+test('[PROJ-100, PROJ-101] checkout flow', ...)
+
+// Multiple keys — slash-separated (bare numbers inherit the last prefix)
+test('[PROJ-1/2/3] covers three test cases', ...)
+// → extracts PROJ-1, PROJ-2, PROJ-3
+
+// Mixed prefix and bare numbers
+test('[PROJ-10, 20] two cases', ...)
+// → extracts PROJ-10, PROJ-20
+```
+
+Tests without any bracket key are collected as **untracked** and written to `reports/untracked-tests.txt` when `untrackedReport` is enabled.
+
+---
+
+## Status Mapping
+
+| Playwright Status | X-Ray Status |
+|---|---|
+| `passed` | `PASS` |
+| `failed` | `FAIL` |
+| `timedOut` | `FAIL` |
+| `skipped` | `TODO` |
+| `interrupted` | `ABORTED` |
+
+---
+
+## Features
+
+Four features are independently toggleable via config or environment variables:
+
+| Feature | Config Key | Env Var | Description |
+|---|---|---|---|
+| Create Execution | `createExecution` | `XRAY_FEATURE_CREATE_EXECUTION` | Create a new Test Execution issue in Jira at run start |
+| Update Status | `updateTestStatus` | `XRAY_FEATURE_UPDATE_STATUS` | Import PASS/FAIL results to X-Ray at run end |
+| Attach Screenshots | `attachScreenshots` | `XRAY_FEATURE_ATTACH_SCREENSHOTS` | Upload failure screenshots as evidence |
+| Untracked Report | `untrackedReport` | `XRAY_FEATURE_UNTRACKED_REPORT` | Write a report of tests with no X-Ray key |
+
+---
+
+## Auth Strategies
+
+### `basic` — Jira Cloud (email + API token)
+
+```typescript
+auth: { type: 'basic', email: '', apiToken: '' }
+```
+
+```bash
+JIRA_EMAIL=qa@company.com
+JIRA_API_TOKEN=your-api-token
+```
+
+Generate an API token at: `https://id.atlassian.com/manage-profile/security/api-tokens`
+
+### `pat` — Jira Data Center (Personal Access Token)
+
+```typescript
+auth: { type: 'pat', token: '' }
+```
+
+```bash
+JIRA_PAT=your-personal-access-token
+```
+
+Generate a PAT in Jira: Profile → Personal Access Tokens.
+
+### `xray-client` — X-Ray Cloud (client credentials)
+
+```typescript
+auth: { type: 'xray-client', clientId: '', clientSecret: '' }
+```
+
+```bash
 XRAY_CLIENT_ID=your-client-id
 XRAY_CLIENT_SECRET=your-client-secret
-
-XRAY_TEST_PLAN_KEY=PROJ-100
-XRAY_TEST_ENVIRONMENTS=staging,production
-XRAY_EXECUTION_KEY=PROJ-200
 ```
 
-### playwright.config.ts
+Generate credentials in X-Ray Cloud: Settings → API Keys.
+
+> **Note:** When using `xray-client`, the reporter authenticates with X-Ray Cloud's OAuth endpoint (`https://xray.cloud.getxray.app/api/v2/authenticate`) to get a bearer token. Jira REST calls (for creating issues) still require `basic` or `pat` credentials unless you pair this with `JIRA_EMAIL` + `JIRA_API_TOKEN`.
+
+---
+
+## Configuration Reference
+
+All options in `xray.config.ts`:
 
 ```typescript
-reporter: [
-  ['./src/main/utils/xray/reporter/xrayReporter.ts', xrayConfig],
-  ['html'],
-],
+const xrayConfig: XRayUserConfig = {
+  // ── Master switch ──────────────────────────────────────────────────────────
+  enabled: false,          // Enable/disable the entire integration
+  verbose: false,          // Log debug-level messages (auth, API calls)
+
+  // ── Jira connection ────────────────────────────────────────────────────────
+  jiraBaseUrl: '',         // e.g. 'https://your-org.atlassian.net'
+  projectKey:  '',         // e.g. 'PROJ'
+  xrayMode: 'cloud',       // 'cloud' | 'dc'
+
+  // ── Authentication ─────────────────────────────────────────────────────────
+  auth: {
+    type: 'basic',         // 'basic' | 'pat' | 'xray-client'
+    email: '',
+    apiToken: '',
+  },
+
+  // ── Feature flags ──────────────────────────────────────────────────────────
+  features: {
+    createExecution:   false,
+    updateTestStatus:  false,
+    attachScreenshots: false,
+    untrackedReport:   false,
+  },
+
+  // ── Execution metadata ─────────────────────────────────────────────────────
+  executionSummary:     'Playwright E2E — Automated Run',
+  executionDescription: 'Automated test execution from Playwright',
+  testPlanKey:          '',   // Link execution to a Test Plan issue key
+  testEnvironments:     [],   // e.g. ['staging', 'chrome']
+  existingExecutionKey: '',   // Reuse an existing execution (skip creation)
+  assignee:             '',   // Jira account ID for the execution issue
+  untrackedOutputFile:  'reports/untracked-tests.txt',
+};
 ```
 
-## Usage Examples
+---
 
-### Test with X-Ray key
+## Environment Variables
+
+Environment variables always override `xray.config.ts` values. Use them for secrets and CI overrides.
+
+### Master switch
+
+| Variable | Type | Description |
+|---|---|---|
+| `XRAY_ENABLED` | `true\|false` | Enable/disable the integration |
+| `XRAY_VERBOSE` | `true\|false` | Enable debug logging |
+| `XRAY_MODE` | `cloud\|dc` | Jira deployment type |
+
+### Jira connection
+
+| Variable | Description |
+|---|---|
+| `JIRA_BASE_URL` | Jira base URL, e.g. `https://your-org.atlassian.net` |
+| `JIRA_PROJECT_KEY` | Jira project key, e.g. `PROJ` |
+
+### Authentication
+
+| Variable | Auth type | Description |
+|---|---|---|
+| `JIRA_EMAIL` | `basic` | Jira account email |
+| `JIRA_API_TOKEN` | `basic` | Jira API token |
+| `JIRA_PAT` | `pat` | Jira Personal Access Token (Data Center) |
+| `XRAY_CLIENT_ID` | `xray-client` | X-Ray Cloud client ID |
+| `XRAY_CLIENT_SECRET` | `xray-client` | X-Ray Cloud client secret |
+
+### Feature flags
+
+| Variable | Description |
+|---|---|
+| `XRAY_FEATURE_CREATE_EXECUTION` | Create a Test Execution issue |
+| `XRAY_FEATURE_UPDATE_STATUS` | Import test results |
+| `XRAY_FEATURE_ATTACH_SCREENSHOTS` | Upload failure screenshots |
+| `XRAY_FEATURE_UNTRACKED_REPORT` | Write untracked tests report |
+
+### Execution metadata
+
+| Variable | Description |
+|---|---|
+| `XRAY_EXECUTION_SUMMARY` | Summary text for the execution issue |
+| `XRAY_EXECUTION_DESCRIPTION` | Description text for the execution issue |
+| `XRAY_TEST_PLAN_KEY` | Test Plan issue key to link the execution to |
+| `XRAY_TEST_ENVIRONMENTS` | Comma-separated environment labels, e.g. `staging,chrome` |
+| `XRAY_EXECUTION_KEY` | Reuse an existing execution (skips creation) |
+| `XRAY_ASSIGNEE` | Jira account ID for the execution issue assignee |
+| `XRAY_UNTRACKED_OUTPUT` | Output path for the untracked tests report |
+
+---
+
+## playwright.config.ts
+
+The reporter is registered in the reporters array. It is disabled by default — enable it via `XRAY_ENABLED=true` or in `xray.config.ts`.
 
 ```typescript
-test('[PROJ-123] should login with valid credentials', async ({ page }) => {
-  await page.goto('/login');
-  await page.fill('#email', 'user@test.com');
-  await page.fill('#password', 'secret');
-  await page.click('#submit');
-  await expect(page).toHaveURL('/dashboard');
+import xrayConfig from './src/main/utils/xray/xray.config';
+
+export default defineConfig({
+  reporter: [
+    ['list'],
+    ['html', { open: 'never', outputFolder: 'reports/html' }],
+    ['allure-playwright', { outputFolder: 'allure-results' }],
+    ['./src/main/utils/xray/reporter/xrayReporter.ts', xrayConfig],
+  ],
 });
 ```
 
-### Multiple keys per test
+---
 
-```typescript
-test('[PROJ-123][PROJ-456] login and verify dashboard', async ({ page }) => {
-  // Both PROJ-123 and PROJ-456 will be updated with this test's result
-});
-```
+## CI/CD Integration
 
-### Comma-separated keys
-
-```typescript
-test('[PROJ-100, PROJ-101] checkout flow covers two test cases', async ({ page }) => {
-  // ...
-});
-```
-
-### Untracked test (no key)
-
-```typescript
-test('exploratory: check new feature', async ({ page }) => {
-  // This test will appear in reports/untracked-tests.txt
-});
-```
-
-### CI pipeline integration
+### GitHub Actions
 
 ```yaml
-# GitHub Actions example
 - name: Run Playwright tests
   env:
     XRAY_ENABLED: true
-    XRAY_EMAIL: ${{ secrets.XRAY_EMAIL }}
-    XRAY_API_TOKEN: ${{ secrets.XRAY_API_TOKEN }}
+    JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+    JIRA_PROJECT_KEY: PROJ
+    JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+    JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+    XRAY_FEATURE_CREATE_EXECUTION: true
+    XRAY_FEATURE_UPDATE_STATUS: true
+    XRAY_FEATURE_ATTACH_SCREENSHOTS: true
+    XRAY_TEST_PLAN_KEY: PROJ-100
+    XRAY_TEST_ENVIRONMENTS: staging
   run: npx playwright test
 ```
 
-## Tips & Best Practices
+### Reuse an existing execution (one execution per pipeline run)
 
-- Add X-Ray keys to test titles as you create test cases in Jira — the reporter picks them up automatically.
-- Use `existingExecutionKey` in CI to append results to a single execution per pipeline run (avoids creating many executions).
-- Enable `untrackedReport` to identify tests that haven't been linked to Jira yet — useful for coverage tracking.
-- Keep `verbose: true` during setup to see authentication and API call logs; disable in production CI for cleaner output.
-- Use `testPlanKey` to link executions to a Test Plan — this enables X-Ray's traceability matrix and coverage reports.
+```yaml
+# Create the execution once, then pass the key to all parallel shards
+- name: Create X-Ray execution
+  id: create_exec
+  run: |
+    KEY=$(curl -s -X POST "$JIRA_BASE_URL/rest/api/3/issue" \
+      -H "Authorization: Basic $(echo -n $JIRA_EMAIL:$JIRA_API_TOKEN | base64)" \
+      -H "Content-Type: application/json" \
+      -d '{"fields":{"project":{"key":"PROJ"},"summary":"CI Run","issuetype":{"name":"Test Execution"}}}' \
+      | jq -r '.key')
+    echo "execution_key=$KEY" >> $GITHUB_OUTPUT
+
+- name: Run tests (shard 1)
+  env:
+    XRAY_ENABLED: true
+    XRAY_EXECUTION_KEY: ${{ steps.create_exec.outputs.execution_key }}
+    XRAY_FEATURE_CREATE_EXECUTION: false   # skip creation — key already exists
+    XRAY_FEATURE_UPDATE_STATUS: true
+  run: npx playwright test --shard=1/2
+```
+
+### Jenkins
+
+```groovy
+environment {
+  XRAY_ENABLED = 'true'
+  JIRA_BASE_URL = credentials('jira-base-url')
+  JIRA_EMAIL = credentials('jira-email')
+  JIRA_API_TOKEN = credentials('jira-api-token')
+  XRAY_FEATURE_CREATE_EXECUTION = 'true'
+  XRAY_FEATURE_UPDATE_STATUS = 'true'
+}
+steps {
+  sh 'npx playwright test'
+}
+```
+
+---
+
+## File Structure
+
+```
+src/main/utils/xray/
+├── xray.config.ts              ← The only file you need to edit
+├── types.ts                    ← All TypeScript types
+├── index.ts                    ← Public barrel (types + utilities)
+├── client/
+│   └── xrayClient.ts           ← HTTP client for Jira + X-Ray REST APIs
+├── reporter/
+│   └── xrayReporter.ts         ← Playwright Reporter implementation
+└── utils/
+    ├── configResolver.ts       ← Merges config file + env vars, validates
+    ├── logger.ts               ← Prefixed console logger
+    ├── screenshotHelper.ts     ← Screenshot → base64 evidence conversion
+    ├── testIdExtractor.ts      ← Extracts [PROJ-123] keys from test titles
+    └── untrackedReport.ts      ← Writes untracked tests file + console summary
+```
+
+### Key design decisions
+
+- **`xrayReporter.ts` is not exported from the barrel** — Playwright loads it directly via file path in `playwright.config.ts`. This avoids circular imports and keeps the reporter isolated.
+- **All API calls are non-throwing** — errors are logged and safe defaults returned so a failing X-Ray call never breaks the test run.
+- **Config validation only runs when `enabled: true`** — so the reporter can be registered in `playwright.config.ts` without requiring credentials in every environment.
+- **Results are imported in a single batch** at `onEnd`, not per-test, to minimise API calls.
