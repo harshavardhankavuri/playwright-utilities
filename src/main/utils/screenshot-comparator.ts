@@ -4,10 +4,26 @@ import * as path from 'path';
 
 /**
  * Dynamic import wrapper for pixelmatch (ESM-only package).
+ * pixelmatch is a function export, not a default export.
  */
-async function loadPixelmatch(): Promise<typeof import('pixelmatch').default> {
-  const mod = await (eval('import("pixelmatch")') as Promise<{ default: typeof import('pixelmatch').default }>);
-  return mod.default;
+async function loadPixelmatch(): Promise<(
+  img1: Buffer | Uint8Array | Uint8ClampedArray,
+  img2: Buffer | Uint8Array | Uint8ClampedArray,
+  output: Buffer | Uint8Array | Uint8ClampedArray | null,
+  width: number,
+  height: number,
+  options?: {
+    threshold?: number;
+    includeAA?: boolean;
+    alpha?: number;
+    aaColor?: [number, number, number];
+    diffColor?: [number, number, number];
+    diffColorAlt?: [number, number, number];
+    diffMask?: Buffer | Uint8Array | Uint8ClampedArray;
+  }
+) => number> {
+  const mod = await (eval('import("pixelmatch")') as Promise<any>);
+  return mod.default || mod;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -520,10 +536,11 @@ export class ScreenshotComparator {
         const cx = current % width;
         const cy = Math.floor(current / width);
 
-        if (!classified.has(current)) continue;
+        const currentInfo = classified.get(current);
+        if (!currentInfo) continue;
 
         cluster.push(current);
-        totalDelta += classified.get(current)!.delta;
+        totalDelta += currentInfo.delta;
         minX = Math.min(minX, cx);
         maxX = Math.max(maxX, cx);
         minY = Math.min(minY, cy);

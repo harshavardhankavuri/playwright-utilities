@@ -270,14 +270,17 @@ export class VisualRegression {
     }
 
     // Compare against all baselines using ScreenshotComparator
+    // Create structured output directory: __visual-diffs__/<spec-file>/<snapshot-name>/
+    const diffOutputDir = this.resolveDiffDir(name, options?.testFilePath);
     const comparator = options?.comparatorOptions
-      ? new ScreenshotComparator({ outputDir: this.diffDir, ...options.comparatorOptions })
-      : this.comparator;
+      ? new ScreenshotComparator({ outputDir: diffOutputDir, ...options.comparatorOptions })
+      : new ScreenshotComparator({ ...this.comparator, outputDir: diffOutputDir } as any);
 
     const allResults: ComparisonResult[] = [];
     let bestResult: ComparisonResult | null = null;
     let bestIdx = -1;
     let matchedIdx = -1;
+    let bestBaselineBuffer: Buffer | null = null;
 
     for (let i = 0; i < baselines.length; i++) {
       // Also apply region masks to the baseline for fair comparison
@@ -291,6 +294,7 @@ export class VisualRegression {
       if (!bestResult || result.diffPercentage < bestResult.diffPercentage) {
         bestResult = result;
         bestIdx = i;
+        bestBaselineBuffer = baselineBuffer;
       }
 
       if (result.isMatch) {
@@ -300,6 +304,19 @@ export class VisualRegression {
     }
 
     const passed = matchedIdx >= 0;
+    
+    // Save baseline and actual images to diff directory when test fails
+    let diffPath: string | undefined = bestResult?.diffImagePath;
+    if (!passed && bestBaselineBuffer) {
+      diffPath = this.saveDiffArtifacts(
+        diffOutputDir,
+        name,
+        bestBaselineBuffer,
+        actualBuffer,
+        bestResult?.diffImagePath,
+      );
+    }
+
     const summary = this.buildSummary(passed, matchedIdx, bestIdx, baselines, allResults, bestResult!, name);
 
     return {
@@ -307,7 +324,7 @@ export class VisualRegression {
       matchedIndex: matchedIdx,
       analysis: bestResult!,
       allResults,
-      diffPath: bestResult?.diffImagePath,
+      diffPath,
       summary,
     };
   }
@@ -327,6 +344,17 @@ export class VisualRegression {
     if (!testFilePath) return path.join(this.snapshotsDir, name, platform);
     const specName = path.basename(testFilePath);
     return path.join(this.snapshotsDir, specName, name, platform);
+  }
+
+  /**
+   * Resolve diff output directory: __visual-diffs__/<spec-file>/<snapshot-name>/
+   * Similar structure to snapshots but without platform subfolder since diffs
+   * are for visual inspection, not cross-platform baseline management.
+   */
+  private resolveDiffDir(name: string, testFilePath?: string): string {
+    if (!testFilePath) return path.join(this.diffDir, name);
+    const specName = path.basename(testFilePath);
+    return path.join(this.diffDir, specName, name);
   }
 
   /**
@@ -371,6 +399,43 @@ export class VisualRegression {
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────────
+
+  /**
+   * Save baseline, actual, and diff images to the diff directory when a test fails.
+   * Returns the path to the diff image.
+   */
+  private saveDiffArtifacts(
+    diffDir: string,
+    name: string,
+    baselineBuffer: Buffer,
+    actualBuffer: Buffer,
+    diffImagePath?: string,
+  ): string {
+    if (!fs.existsSync(diffDir)) {
+      fs.mkdirSync(diffDir, { recursive: true });
+    }
+
+    const timestamp = Date.now();
+    
+    // Save baseline image
+    const baselinePath = path.join(diffDir, `${name}-baseline.png`);
+    fs.writeFileSync(baselinePath, baselineBuffer);
+
+    // Save actual image
+    const actualPath = path.join(diffDir, `${name}-actual.png`);
+    fs.writeFileSync(actualPath, actualBuffer);
+
+    // Copy or move diff image to consistent naming
+    const finalDiffPath = path.join(diffDir, `${name}-diff.png`);
+    if (diffImagePath && fs.existsSync(diffImagePath)) {
+      // Copy the comparator-generated diff to our structured location
+      fs.copyFileSync(diffImagePath, finalDiffPath);
+      // Remove the original timestamped diff
+      fs.unlinkSync(diffImagePath);
+    }
+
+    return finalDiffPath;
+  }
 
   private sanitize(name: string): string {
     return name.replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-');

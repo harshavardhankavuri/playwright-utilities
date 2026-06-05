@@ -115,6 +115,52 @@ const result = await visual.assertPage(page, {
 expect(result.passed).toBe(true);
 ```
 
+## Troubleshooting
+
+### TypeScript Error: "Namespace 'Pixelmatch' has no exported member 'default'"
+
+If you're using `screenshot-comparator.ts` in a different project and encounter this TypeScript error, it's due to how the `pixelmatch` package exports its types. The fix is already implemented in this utility, but if you copied the file before the fix, ensure the `loadPixelmatch()` function looks like this:
+
+```typescript
+async function loadPixelmatch(): Promise<(
+  img1: Buffer | Uint8Array | Uint8ClampedArray,
+  img2: Buffer | Uint8Array | Uint8ClampedArray,
+  output: Buffer | Uint8Array | Uint8ClampedArray | null,
+  width: number,
+  height: number,
+  options?: {
+    threshold?: number;
+    includeAA?: boolean;
+    alpha?: number;
+    aaColor?: [number, number, number];
+    diffColor?: [number, number, number];
+    diffColorAlt?: [number, number, number];
+    diffMask?: Buffer | Uint8Array | Uint8ClampedArray;
+  }
+) => number> {
+  const mod = await (eval('import("pixelmatch")') as Promise<any>);
+  return mod.default || mod;
+}
+```
+
+This handles both default and named exports properly across different bundler configurations.
+
+## Usage Examples
+
+### Basic page comparison
+
+```typescript
+import { VisualRegression } from '../main/utils';
+
+const visual = new VisualRegression();
+
+const result = await visual.assertPage(page, {
+  name: 'login-page',
+  testFilePath: __filename,
+});
+expect(result.passed).toBe(true);
+```
+
 ### Element comparison
 
 ```typescript
@@ -290,7 +336,7 @@ UPDATE_SNAPSHOTS=true npx playwright test
 
 ### Inspecting failures
 
-When a visual test fails, diff images are automatically saved to `__visual-diffs__/` at the project root.
+When a visual test fails, diff images are automatically saved to `__visual-diffs__/` at the project root with a structured folder layout matching your test organization.
 
 ```typescript
 const result = await visual.assertPage(page, { name: 'checkout', testFilePath: __filename });
@@ -300,16 +346,31 @@ if (!result.passed) {
   console.log(`Severity: ${result.analysis.severity}`);
   console.log(`Diff: ${result.analysis.diffPercentage}%`);
   console.log(`Diff image: ${result.diffPath}`);
-  // Diff images saved to: __visual-diffs__/
+  // Diff artifacts saved to: __visual-diffs__/<spec-file>/<snapshot-name>/
 }
 ```
 
-**Diff image location:**
+**Diff artifacts structure:**
 ```
 __visual-diffs__/
-  checkout-vs-1-diff.png       ← Visual diff highlighting changes
-  checkout-vs-1-annotated.png  ← Annotated with bounding boxes
+  visual-regression.spec.ts/           ← Test file name
+    checkout/                          ← Snapshot name
+      checkout-baseline.png            ← Baseline image (closest match)
+      checkout-actual.png              ← Actual screenshot that failed
+      checkout-diff.png                ← Visual diff highlighting changes
+  login.spec.ts/
+    login-form/
+      login-form-baseline.png
+      login-form-actual.png
+      login-form-diff.png
 ```
+
+**Key features:**
+- **Baseline image**: The closest matching baseline from your `__snapshots__` directory
+- **Actual image**: The screenshot captured during the test run that failed
+- **Diff image**: Visual comparison highlighting the differences with colored regions
+- **Organized structure**: Mirrors your test file and snapshot naming for easy navigation
+- **Automatic cleanup**: Each test run overwrites previous diff artifacts with the same name
 
 The `__visual-diffs__/` directory is automatically created and added to `.gitignore` to prevent committing test artifacts.
 
