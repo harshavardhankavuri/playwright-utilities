@@ -4,134 +4,195 @@
 
 ## Overview
 
-Accessibility Helpers provide quick, lightweight a11y checks for Playwright tests. They validate common WCAG requirements — image alt text, form labels, heading hierarchy, and keyboard accessibility — without requiring a full axe-core integration. Use them as a first line of defense; for comprehensive WCAG audits, pair with `@axe-core/playwright`.
+Accessibility Helpers provide quick, lightweight a11y checks for Playwright tests. They validate common WCAG requirements without requiring a full axe-core integration. Use them as a first line of defense; for comprehensive WCAG audits, pair with `@axe-core/playwright`.
 
-## How It Works
-
-Each check function queries the page DOM for specific element types and validates accessibility attributes:
-
-- **Images** — Checks every `<img>` for an `alt` attribute.
-- **Form labels** — Checks inputs for associated `<label>`, `aria-label`, or `aria-labelledby`.
-- **Heading hierarchy** — Validates that headings start at `h1` and don't skip levels (h1→h3).
-- **Keyboard accessibility** — Checks elements with `onclick`, `role="button"`, or `role="link"` for `tabindex` or native focusability.
-
-All functions return an `A11yCheckResult` with `passed`, `violations[]`, and `warnings[]`.
-
-## Configuration
-
-No configuration needed — these are stateless functions. Each returns a result object you can assert on.
+All functions return an `A11yCheckResult`:
 
 ```typescript
 interface A11yCheckResult {
   passed: boolean;
   violations: string[];   // Hard failures
-  warnings: string[];     // Soft issues (e.g. placeholder-only labels)
+  warnings: string[];     // Soft issues (non-blocking)
 }
 ```
 
-## Usage Examples
+---
 
-### Run all checks at once
+## Quick Start
+
+### Run all basic checks
 
 ```typescript
-import { runA11yChecks } from '@utils/accessibility-helpers';
+import { runA11yChecks } from './src/main/utils';
 
 test('page passes basic a11y checks', async ({ page }) => {
-  await page.goto('/inventory.html');
-
+  await page.goto('/');
   const result = await runA11yChecks(page);
   expect(result.violations).toEqual([]);
 });
 ```
 
-### Individual checks
+### Run full enhanced checks
 
 ```typescript
-import {
-  checkImagesHaveAlt,
-  checkFormLabels,
-  checkHeadingHierarchy,
-  checkKeyboardAccessibility,
-} from '@utils/accessibility-helpers';
+import { runFullA11yChecks } from './src/main/utils';
 
-test('all images have alt text', async ({ page }) => {
-  const result = await checkImagesHaveAlt(page);
-  expect(result.passed).toBe(true);
-});
+test('page passes full a11y audit', async ({ page }) => {
+  await page.goto('/');
+  const result = await runFullA11yChecks(page, {
+    modalSelector: '[role="dialog"]', // Optional: check modal focus trap
+  });
 
-test('form inputs have labels', async ({ page }) => {
-  await page.goto('/checkout-step-one.html');
-  const result = await checkFormLabels(page);
-
-  if (!result.passed) {
-    console.log('Label violations:', result.violations);
+  if (result.violations.length > 0) {
+    console.log('Violations:', result.violations);
   }
-  expect(result.passed).toBe(true);
-});
-
-test('heading hierarchy is correct', async ({ page }) => {
-  const result = await checkHeadingHierarchy(page);
-  expect(result.violations).toEqual([]);
-});
-
-test('interactive elements are keyboard accessible', async ({ page }) => {
-  const result = await checkKeyboardAccessibility(page);
-  expect(result.passed).toBe(true);
+  expect(result.violations).toHaveLength(0);
 });
 ```
 
-### SauceDemo example
+---
+
+## Basic Checks
+
+### `checkImagesHaveAlt(page)`
+
+Checks every `<img>` for an `alt` attribute.
 
 ```typescript
-test('inventory page accessibility', async ({ page }) => {
-  await page.goto('https://www.saucedemo.com/inventory.html');
+const result = await checkImagesHaveAlt(page);
+// violations: ['Image missing alt attribute: /logo.png']
+```
 
-  const a11y = await runA11yChecks(page);
+### `checkFormLabels(page)`
 
-  // Log any issues for debugging
-  if (a11y.violations.length > 0) {
-    console.log('A11y violations:');
-    a11y.violations.forEach((v) => console.log(`  ❌ ${v}`));
-  }
-  if (a11y.warnings.length > 0) {
-    console.log('A11y warnings:');
-    a11y.warnings.forEach((w) => console.log(`  ⚠️ ${w}`));
-  }
+Checks inputs for associated `<label>`, `aria-label`, or `aria-labelledby`.
 
-  expect(a11y.passed).toBe(true);
+```typescript
+const result = await checkFormLabels(page);
+// violations: ['Input #email has no associated label']
+// warnings:   ['Input uses placeholder as only label hint (not accessible)']
+```
+
+### `checkHeadingHierarchy(page)`
+
+Validates headings start at `h1` and don't skip levels.
+
+```typescript
+const result = await checkHeadingHierarchy(page);
+// violations: ['Heading level skipped: h2 → h4 ("Section Title")']
+```
+
+### `checkKeyboardAccessibility(page)`
+
+Checks elements with `onclick`, `role="button"`, or `role="link"` for keyboard access.
+
+```typescript
+const result = await checkKeyboardAccessibility(page);
+// violations: ['Element <div role="button"> "Click me" is not keyboard accessible (missing tabindex)']
+```
+
+### `runA11yChecks(page)`
+
+Runs all four basic checks above and returns a combined result.
+
+---
+
+## Enhanced Checks
+
+### `checkFocusIndicators(page)`
+
+Samples up to 20 focusable elements and checks for visible focus rings (outline or box-shadow).
+
+```typescript
+import { checkFocusIndicators } from './src/main/utils';
+
+const result = await checkFocusIndicators(page);
+// warnings: ['<button> "Submit" may lack visible focus indicator (outline: none)']
+```
+
+### `checkAriaLiveRegions(page)`
+
+Validates ARIA live regions are correctly configured for screen reader announcements.
+
+```typescript
+import { checkAriaLiveRegions } from './src/main/utils';
+
+const result = await checkAriaLiveRegions(page);
+// violations: ['[role="alert"] should have aria-live="assertive", got "polite"']
+// warnings:   ['Live region <div> missing aria-atomic attribute']
+```
+
+### `checkFocusTrap(page, modalSelector)`
+
+Checks that a modal dialog has proper ARIA attributes for focus trapping.
+
+```typescript
+import { checkFocusTrap } from './src/main/utils';
+
+const result = await checkFocusTrap(page, '[role="dialog"]');
+// violations: ['Modal "[role="dialog"]" missing aria-modal="true"']
+```
+
+### `checkSkipLinks(page)`
+
+Checks for skip navigation links that allow keyboard users to bypass repetitive content.
+
+```typescript
+import { checkSkipLinks } from './src/main/utils';
+
+const result = await checkSkipLinks(page);
+// warnings: ['No skip navigation link found. Consider adding "Skip to main content"']
+```
+
+### `checkTouchTargetSize(page, options?)`
+
+Checks that interactive elements meet the minimum touch target size (WCAG 2.5.5).
+
+```typescript
+import { checkTouchTargetSize } from './src/main/utils';
+
+// Default: 44x44px minimum
+const result = await checkTouchTargetSize(page);
+
+// Custom minimum
+const result = await checkTouchTargetSize(page, { minSize: 48 });
+// violations: ['<button> "X" is 24x24px (min: 44x44px)']
+```
+
+### `runFullA11yChecks(page, options?)`
+
+Runs all basic + enhanced checks in one call.
+
+```typescript
+import { runFullA11yChecks } from './src/main/utils';
+
+const result = await runFullA11yChecks(page, {
+  modalSelector: '[role="dialog"]',
 });
 ```
 
-### Combine with soft assertions
-
-```typescript
-import { SoftAssert } from '@utils/soft-assertions';
-
-test('full page a11y audit', async ({ page }) => {
-  const soft = new SoftAssert();
-  const results = await runA11yChecks(page);
-
-  for (const violation of results.violations) {
-    soft.expectValue(true, violation).toBe(false); // Record each as a failure
-  }
-
-  soft.assertAll();
-});
-```
+---
 
 ## What Each Check Validates
 
 | Check | Validates | WCAG Criterion |
-|-------|-----------|----------------|
+|---|---|---|
 | `checkImagesHaveAlt` | All `<img>` have `alt` attribute | 1.1.1 Non-text Content |
 | `checkFormLabels` | Inputs have `<label>`, `aria-label`, or `aria-labelledby` | 1.3.1 Info and Relationships |
 | `checkHeadingHierarchy` | Headings start at h1, no level skips | 1.3.1 Info and Relationships |
-| `checkKeyboardAccessibility` | Interactive elements have tabindex or are natively focusable | 2.1.1 Keyboard |
+| `checkKeyboardAccessibility` | Interactive elements are keyboard accessible | 2.1.1 Keyboard |
+| `checkFocusIndicators` | Focusable elements have visible focus rings | 2.4.7 Focus Visible |
+| `checkAriaLiveRegions` | Live regions are correctly configured | 4.1.3 Status Messages |
+| `checkFocusTrap` | Modals have `aria-modal`, `role="dialog"`, and label | 1.3.1, 2.1.2 |
+| `checkSkipLinks` | Skip navigation links are present | 2.4.1 Bypass Blocks |
+| `checkTouchTargetSize` | Touch targets are at least 44x44px | 2.5.5 Target Size |
 
-## Tips & Best Practices
+---
 
-- Run `runA11yChecks` in a shared `afterEach` hook to catch regressions on every page visited.
+## Tips
+
+- Run `runA11yChecks` in a shared `afterEach` hook to catch regressions on every page.
 - These checks are fast (DOM queries only) — they add negligible time to tests.
-- Use `warnings` to track non-blocking issues (e.g. placeholder-as-label) that should be fixed but don't fail the build.
-- For comprehensive WCAG compliance, add `@axe-core/playwright` alongside these helpers. These catch the most common issues quickly; axe catches the rest.
-- Full WCAG validation requires manual testing with assistive technologies and expert accessibility review.
+- Use `warnings` to track non-blocking issues that should be fixed but don't fail the build.
+- For comprehensive WCAG compliance, add `@axe-core/playwright` alongside these helpers.
+- Full WCAG validation requires manual testing with assistive technologies and expert review.

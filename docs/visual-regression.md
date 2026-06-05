@@ -71,7 +71,7 @@ Per-platform folders prevent false positives from font rendering and image decod
 ```typescript
 const visual = new VisualRegression({
   snapshotsDir: '__snapshots__',          // Where baselines live
-  diffDir: 'test-results/visual-diffs',    // Where diff images go on failure
+  diffDir: '__visual-diffs__',             // Where diff images go on failure (at project root)
   maxBaselines: 4,                          // Max valid states per snapshot
   comparatorOptions: {
     maxDiffPercentage: 0.5,                // % threshold
@@ -165,14 +165,121 @@ await visual.assertElement(card, page, {
 
 ### Multiple valid baselines
 
+Multiple baselines allow you to accept several valid visual states for a single component. This is useful when:
+- UI can render in acceptable variations (sort orders, empty/populated states)
+- Different browser rendering produces slightly different outputs
+- A/B testing scenarios where multiple designs are valid
+- Dark mode vs light mode variations
+
+#### Capturing Multiple Baselines
+
+There are three ways to capture multiple baselines:
+
+**Method 1: Sequential captures in a single test**
 ```typescript
-// Save different valid states
-await visual.assertPage(page, { name: 'cart', testFilePath: __filename, update: true });
+// Capture first state
+await visual.assertPage(page, { 
+  name: 'cart', 
+  testFilePath: __filename, 
+  update: true 
+});
+
+// Change state
 await addItemToCart();
-await visual.assertPage(page, { name: 'cart', testFilePath: __filename, update: true });
+
+// Capture second state
+await visual.assertPage(page, { 
+  name: 'cart', 
+  testFilePath: __filename, 
+  update: true 
+});
 
 // Later: passes if current state matches ANY baseline
 const result = await visual.assertPage(page, { name: 'cart', testFilePath: __filename });
+```
+
+**Method 2: Multiple test runs with UPDATE_SNAPSHOTS=true**
+```bash
+# Run 1: Capture state A
+npm run test:visual -- --grep "cart test"
+
+# Manually change app state (e.g., toggle dark mode, change sort order)
+
+# Run 2: Capture state B
+UPDATE_SNAPSHOTS=true npm run test:visual -- --grep "cart test"
+
+# Run 3: Capture state C (if needed)
+UPDATE_SNAPSHOTS=true npm run test:visual -- --grep "cart test"
+```
+
+**Method 3: Dedicated baseline capture script**
+```typescript
+// scripts/capture-baselines.ts
+import { test } from '@playwright/test';
+import { VisualRegression } from '../src/main/utils';
+
+test.describe('Baseline Capture', () => {
+  const visual = new VisualRegression();
+  
+  test('capture product list - empty state', async ({ page }) => {
+    await page.goto('/products');
+    await visual.assertPage(page, {
+      name: 'product-list',
+      testFilePath: __filename,
+      update: true,
+    });
+  });
+  
+  test('capture product list - populated state', async ({ page }) => {
+    await page.goto('/products');
+    await addMockProducts(page);
+    await visual.assertPage(page, {
+      name: 'product-list',
+      testFilePath: __filename,
+      update: true,
+    });
+  });
+  
+  test('capture product list - grid view', async ({ page }) => {
+    await page.goto('/products');
+    await page.click('[data-view="grid"]');
+    await visual.assertPage(page, {
+      name: 'product-list',
+      testFilePath: __filename,
+      update: true,
+    });
+  });
+});
+```
+
+Then run:
+```bash
+UPDATE_SNAPSHOTS=true npx playwright test scripts/capture-baselines.ts
+```
+
+#### Baseline Rotation
+
+When you exceed `maxBaselines` (default: 4), the oldest baseline is automatically removed:
+```
+Before: baseline-1.png, baseline-2.png, baseline-3.png, baseline-4.png
+After adding 5th: baseline-1.png (deleted), baseline-2→1, baseline-3→2, baseline-4→3, new→baseline-4.png
+```
+
+#### Managing Baselines
+
+**List current baselines:**
+```bash
+ls -R __snapshots__/your-test.spec.ts/snapshot-name/
+```
+
+**Delete specific baselines manually:**
+```bash
+rm __snapshots__/your-test.spec.ts/snapshot-name/win32/baseline-2.png
+```
+
+**Reset all baselines for a snapshot:**
+```bash
+rm -rf __snapshots__/your-test.spec.ts/snapshot-name/
 ```
 
 ### Updating baselines
@@ -183,6 +290,8 @@ UPDATE_SNAPSHOTS=true npx playwright test
 
 ### Inspecting failures
 
+When a visual test fails, diff images are automatically saved to `__visual-diffs__/` at the project root.
+
 ```typescript
 const result = await visual.assertPage(page, { name: 'checkout', testFilePath: __filename });
 if (!result.passed) {
@@ -191,8 +300,18 @@ if (!result.passed) {
   console.log(`Severity: ${result.analysis.severity}`);
   console.log(`Diff: ${result.analysis.diffPercentage}%`);
   console.log(`Diff image: ${result.diffPath}`);
+  // Diff images saved to: __visual-diffs__/
 }
 ```
+
+**Diff image location:**
+```
+__visual-diffs__/
+  checkout-vs-1-diff.png       ← Visual diff highlighting changes
+  checkout-vs-1-annotated.png  ← Annotated with bounding boxes
+```
+
+The `__visual-diffs__/` directory is automatically created and added to `.gitignore` to prevent committing test artifacts.
 
 ## Comparison with Playwright's Built-in
 

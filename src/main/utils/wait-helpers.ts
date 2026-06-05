@@ -315,3 +315,125 @@ export async function waitForCondition(
     options?.message ?? `waitForCondition timed out after ${timeout}ms`,
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ANIMATION & TRANSITION WAITS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Wait for all CSS animations and transitions on an element to complete.
+ * Useful before taking screenshots or asserting final visual state.
+ *
+ * Usage:
+ *   await waitForAnimation(page.locator('.modal'));
+ */
+export async function waitForAnimation(
+  locator: Locator,
+  options?: { timeout?: number },
+): Promise<void> {
+  const timeout = options?.timeout ?? 5_000;
+  await locator.waitFor({ state: 'visible', timeout });
+
+  await locator.evaluate((el) => {
+    return new Promise<void>((resolve) => {
+      const animations = el.getAnimations?.() ?? [];
+      if (animations.length === 0) { resolve(); return; }
+      Promise.all(animations.map((a) => a.finished)).then(() => resolve()).catch(() => resolve());
+    });
+  });
+}
+
+/**
+ * Wait for a localStorage key to have a specific value.
+ * Useful for waiting on async operations that store results in localStorage.
+ *
+ * Usage:
+ *   await waitForLocalStorage(page, 'auth_token', (v) => v !== null);
+ */
+export async function waitForLocalStorage(
+  page: Page,
+  key: string,
+  predicate: (value: string | null) => boolean,
+  options?: { timeout?: number; interval?: number },
+): Promise<string | null> {
+  const timeout = options?.timeout ?? 10_000;
+  const interval = options?.interval ?? 250;
+  const deadline = Date.now() + timeout;
+
+  while (Date.now() < deadline) {
+    const value = await page.evaluate((k) => localStorage.getItem(k), key);
+    if (predicate(value)) return value;
+    await new Promise((r) => setTimeout(r, interval));
+  }
+
+  throw new Error(`waitForLocalStorage: key "${key}" did not satisfy predicate within ${timeout}ms`);
+}
+
+/**
+ * Wait for a sessionStorage key to have a specific value.
+ */
+export async function waitForSessionStorage(
+  page: Page,
+  key: string,
+  predicate: (value: string | null) => boolean,
+  options?: { timeout?: number; interval?: number },
+): Promise<string | null> {
+  const timeout = options?.timeout ?? 10_000;
+  const interval = options?.interval ?? 250;
+  const deadline = Date.now() + timeout;
+
+  while (Date.now() < deadline) {
+    const value = await page.evaluate((k) => sessionStorage.getItem(k), key);
+    if (predicate(value)) return value;
+    await new Promise((r) => setTimeout(r, interval));
+  }
+
+  throw new Error(`waitForSessionStorage: key "${key}" did not satisfy predicate within ${timeout}ms`);
+}
+
+/**
+ * Wait for a specific number of network requests to complete.
+ * Useful for waiting on parallel API calls triggered by a single action.
+ *
+ * Usage:
+ *   await waitForRequestCount(page, '/api/data', 3, async () => {
+ *     await page.click('#load-all');
+ *   });
+ */
+export async function waitForRequestCount(
+  page: Page,
+  urlPattern: string | RegExp,
+  expectedCount: number,
+  triggerAction?: () => Promise<void>,
+  options?: { timeout?: number },
+): Promise<void> {
+  const timeout = options?.timeout ?? 15_000;
+  let count = 0;
+
+  const handler = (response: any) => {
+    const url = response.url();
+    const matches = typeof urlPattern === 'string'
+      ? url.includes(urlPattern)
+      : urlPattern.test(url);
+    if (matches) count++;
+  };
+
+  page.on('response', handler);
+
+  try {
+    if (triggerAction) await triggerAction();
+
+    const deadline = Date.now() + timeout;
+    while (count < expectedCount && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+
+    if (count < expectedCount) {
+      throw new Error(
+        `waitForRequestCount: expected ${expectedCount} requests to "${urlPattern}", got ${count} within ${timeout}ms`,
+      );
+    }
+  } finally {
+    page.off('response', handler);
+  }
+}

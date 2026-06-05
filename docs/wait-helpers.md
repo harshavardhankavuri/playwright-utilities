@@ -146,3 +146,63 @@ test('add to cart updates badge', async ({ page }) => {
 - Keep `retryAction` retries low (2–3). If an action needs more retries, the test or the app has a deeper issue.
 - `waitForDownload` returns the file path — use it to read and assert file contents.
 - These helpers are composable: combine `retryAction` with `waitForApiResponse` for resilient API-triggered flows.
+
+---
+
+## New Helpers
+
+### `waitForAnimation(locator, options?)`
+
+Wait for all CSS animations and transitions on an element to complete. Useful before taking screenshots or asserting final visual state.
+
+```typescript
+import { waitForAnimation } from './src/main/utils';
+
+// Wait for modal open animation to finish
+await page.click('#open-modal');
+await waitForAnimation(page.locator('.modal'));
+await expect(page.locator('.modal')).toBeVisible();
+```
+
+### `waitForLocalStorage(page, key, predicate, options?)`
+
+Wait for a localStorage key to satisfy a predicate. Useful for async operations that store results in localStorage.
+
+```typescript
+import { waitForLocalStorage } from './src/main/utils';
+
+// Wait for auth token to be stored
+await waitForLocalStorage(page, 'access_token', (v) => v !== null);
+
+// Wait for a specific value
+await waitForLocalStorage(page, 'status', (v) => v === 'ready');
+
+// Wait for key to be removed
+await waitForLocalStorage(page, 'loading', (v) => v === null);
+```
+
+### `waitForSessionStorage(page, key, predicate, options?)`
+
+Same as `waitForLocalStorage` but for sessionStorage.
+
+```typescript
+import { waitForSessionStorage } from './src/main/utils';
+
+await waitForSessionStorage(page, 'cart_id', (v) => v !== null && v.length > 0);
+```
+
+### `waitForRequestCount(page, urlPattern, expectedCount, triggerAction?, options?)`
+
+Wait for a specific number of network requests to complete. Useful for parallel API calls.
+
+```typescript
+import { waitForRequestCount } from './src/main/utils';
+
+// Wait for 3 API calls after clicking "Load All"
+await waitForRequestCount(page, '/api/data', 3, async () => {
+  await page.click('#load-all');
+});
+
+// Without trigger (count requests that already happened)
+await waitForRequestCount(page, /\/api\/items/, 5);
+```

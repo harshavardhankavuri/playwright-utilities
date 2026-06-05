@@ -10,12 +10,14 @@ Complete index of every utility in the framework. Click any link for full docume
 
 | Utility | File | Description |
 |---|---|---|
-| [Wait Helpers](./wait-helpers.md) | `wait-helpers.ts` | `waitFor`, `waitForVisible`, `waitForHidden`, `waitForCondition`, `retryAction` |
+| [Wait Helpers](./wait-helpers.md) | `wait-helpers.ts` | `waitFor`, `waitForVisible`, `waitForHidden`, `waitForCondition`, `retryAction`, `waitForAnimation`, `waitForLocalStorage` |
 | [Keyboard Helpers](./keyboard-helpers.md) | `keyboard-helpers.ts` | Shortcuts, clipboard, tab navigation, `verifyTabOrder` |
-| [Visual Helpers](./visual-helpers.md) | `visual-helpers.ts` | Scroll, highlight, console errors, network errors, viewports |
+| [Visual Helpers](./visual-helpers.md) | `visual-helpers.ts` | Scroll, highlight, console errors, network errors, viewports, `measureElement`, `setColorScheme` |
 | [DateTime Helpers](./datetime-helpers.md) | `datetime-helpers.ts` | Clock control, date pickers, formatting, timezones |
 | [Table Helpers](./table-helpers.md) | `table-helpers.ts` | Read/sort/filter/paginate/select/edit data grids |
-| [Accessibility Helpers](./accessibility-helpers.md) | `accessibility-helpers.ts` | Alt text, form labels, heading hierarchy, keyboard access |
+| [Accessibility Helpers](./accessibility-helpers.md) | `accessibility-helpers.ts` | Alt text, form labels, heading hierarchy, focus indicators, ARIA live regions, contrast, touch targets |
+| [Drag & Drop Helpers](./drag-drop-helpers.md) | `drag-drop-helpers.ts` | Native drag, mouse/pointer simulation, file drop, sortable list reorder |
+| [Form Helpers](./form-helpers.md) | `form-helpers.ts` | Smart fill, select, checkbox, radio, file upload, validation, extraction, sliders |
 
 ### Assertions
 
@@ -30,7 +32,8 @@ Complete index of every utility in the framework. Click any link for full docume
 |---|---|---|
 | [Visual Regression](./visual-regression.md) | `visual-regression.ts` | Multi-baseline snapshots with masking and intelligent diff |
 | [Screenshot Comparator](./screenshot-comparator.md) | `screenshot-comparator.ts` | Low-level pixel diff engine with AA/alignment/structural classification |
-| [Visual Helpers](./visual-helpers.md) | `visual-helpers.ts` | Highlight, scroll, full-page screenshots |
+| [Visual Helpers](./visual-helpers.md) | `visual-helpers.ts` | Highlight, scroll, full-page screenshots, color scheme emulation |
+| [Color Helpers](./color-helpers.md) | `color-helpers.ts` | Color extraction, WCAG contrast, theme/design token validation |
 
 ### API & Network
 
@@ -60,6 +63,7 @@ Complete index of every utility in the framework. Click any link for full docume
 | [Test Data Factory](./test-data-factory.md) | `test-data-factory.ts` | Seeded fake data: people, addresses, credit cards, UUIDs |
 | [File Helpers](./file-helpers.md) | `file-helpers.ts` | Read/write JSON and text files, path resolution |
 | [Env Helpers](./env-helpers.md) | `env-helpers.ts` | Type-safe env var access, `buildConfig`, `IS_CI`, `isEnv` |
+| [Storage Helpers](./storage-helpers.md) | `storage-helpers.ts` | localStorage, sessionStorage, cookies, IndexedDB, storage snapshots |
 | Test Helpers | `test-helpers.ts` | `randomString`, `randomUUID`, `slugify`, `deepClone`, `pick`, `omit` |
 
 ### Reporting & Observability
@@ -100,10 +104,27 @@ See [k6/README.md](./k6/README.md) for the full guide.
 import {
   // UI
   waitFor, waitForVisible, waitForHidden, waitForCondition,
-  retryAction, waitForText,
+  retryAction, waitForText, waitForAnimation, waitForLocalStorage,
   pressShortcut, setClipboardAndPaste, verifyTabOrder,
   scrollToCenter, collectConsoleErrors, collectNetworkErrors,
+  collectAllConsole, measureElement, setColorScheme,
   VIEWPORTS, setViewport,
+
+  // Forms & Interaction
+  fillForm, fillField, selectByText, selectByValue,
+  checkBox, uncheckBox, selectRadio, uploadFile, uploadBuffer,
+  getFormValidationState, extractFormData, setSliderValue,
+
+  // Drag & Drop
+  dragTo, dragWithMouse, dropFile, dropFiles, reorderListItem,
+
+  // Storage
+  getLocalStorage, setLocalStorage, clearLocalStorage,
+  getCookie, setCookie, captureStorageSnapshot, restoreStorageSnapshot,
+
+  // Colors
+  getBackgroundColor, getTextColor, checkContrast, checkElementContrast,
+  findContrastViolations, expectCssVariables, parseColor, toHex,
 
   // Assertions
   SoftAssert, FluentLocatorExpect,
@@ -129,6 +150,10 @@ import {
   // Reporting
   configureAllure, allureStep, allureAttachJson,
   PerformanceCollector, measurePagePerformance,
+
+  // Accessibility
+  runA11yChecks, runFullA11yChecks, checkContrast,
+  checkFocusIndicators, checkAriaLiveRegions,
 
   // Locators
   SmartLocator,

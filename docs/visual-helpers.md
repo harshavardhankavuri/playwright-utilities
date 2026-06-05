@@ -154,3 +154,89 @@ test('debug inventory layout', async ({ page }) => {
 - Use `VIEWPORTS` with Playwright's `test.describe` to create responsive test suites without duplicating test logic.
 - `takeFullPageScreenshot` includes a timestamp in the filename, so multiple runs don't overwrite each other.
 - Combine `scrollToBottom` with `waitForCount` for infinite-scroll testing: scroll, wait for new items, assert count.
+
+---
+
+## New Helpers
+
+### `collectAllConsole(page)`
+
+Collect ALL console messages (log, info, warn, error, debug) with filtering.
+
+```typescript
+import { collectAllConsole } from './src/main/utils';
+
+const console = collectAllConsole(page);
+// ... test actions ...
+
+const errors = console.getByType('error');
+expect(errors).toHaveLength(0);
+
+const warnings = console.getByType('warning');
+console.hasErrors(); // true if any error or pageerror
+```
+
+### `measureElement(locator)`
+
+Get the bounding box and visibility state of an element.
+
+```typescript
+import { measureElement } from './src/main/utils';
+
+const info = await measureElement(page.locator('.hero-banner'));
+expect(info.width).toBeGreaterThan(800);
+expect(info.isVisible).toBe(true);
+expect(info.isInViewport).toBe(true);
+// info: { x, y, width, height, top, right, bottom, left, isVisible, isInViewport }
+```
+
+### `scrollTo(page, position, options?)`
+
+Scroll to a specific pixel position.
+
+```typescript
+import { scrollTo } from './src/main/utils';
+
+await scrollTo(page, { y: 500 });
+await scrollTo(page, { x: 0, y: 1000 }, { behavior: 'smooth' });
+```
+
+### `scrollIntoView(locator, options?)`
+
+Scroll an element into view and wait for it to settle.
+
+```typescript
+import { scrollIntoView } from './src/main/utils';
+
+await scrollIntoView(page.locator('#footer'));
+await scrollIntoView(page.locator('.section'), { block: 'start' });
+```
+
+### `isFullyVisible(locator)`
+
+Check if an element is fully within the viewport (not clipped).
+
+```typescript
+import { isFullyVisible } from './src/main/utils';
+
+const visible = await isFullyVisible(page.locator('.banner'));
+```
+
+### `setColorScheme(page, scheme)` / `setReducedMotion(page, preference)` / `setForcedColors(page, mode)`
+
+Emulate media preferences for responsive design and accessibility testing.
+
+```typescript
+import { setColorScheme, setReducedMotion, setForcedColors } from './src/main/utils';
+
+// Test dark mode
+await setColorScheme(page, 'dark');
+await page.goto('/');
+// ... assert dark mode styles ...
+
+// Test with animations disabled
+await setReducedMotion(page, 'reduce');
+
+// Test high contrast mode
+await setForcedColors(page, 'active');
+```

@@ -179,3 +179,180 @@ export async function setViewport(
   const dimensions = typeof size === 'string' ? VIEWPORTS[size] : size;
   await page.setViewportSize(dimensions);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENHANCED VISUAL HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Collect ALL console messages (log, info, warn, error, debug).
+ * Returns a structured collector with filtering capabilities.
+ *
+ * Usage:
+ *   const console = collectAllConsole(page);
+ *   // ... test actions ...
+ *   const errors = console.getByType('error');
+ *   expect(errors).toHaveLength(0);
+ */
+export function collectAllConsole(page: Page): {
+  get: () => Array<{ type: string; text: string; timestamp: number }>;
+  getByType: (type: string) => Array<{ type: string; text: string; timestamp: number }>;
+  clear: () => void;
+  hasErrors: () => boolean;
+} {
+  const messages: Array<{ type: string; text: string; timestamp: number }> = [];
+
+  page.on('console', (msg) => {
+    messages.push({ type: msg.type(), text: msg.text(), timestamp: Date.now() });
+  });
+
+  page.on('pageerror', (error) => {
+    messages.push({ type: 'pageerror', text: error.message, timestamp: Date.now() });
+  });
+
+  return {
+    get: () => [...messages],
+    getByType: (type) => messages.filter((m) => m.type === type),
+    clear: () => { messages.length = 0; },
+    hasErrors: () => messages.some((m) => m.type === 'error' || m.type === 'pageerror'),
+  };
+}
+
+/**
+ * Measure the bounding box and computed styles of an element.
+ * Useful for layout assertions and responsive design testing.
+ *
+ * Usage:
+ *   const info = await measureElement(page.locator('.hero-banner'));
+ *   expect(info.width).toBeGreaterThan(800);
+ */
+export async function measureElement(locator: Locator): Promise<{
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+  isVisible: boolean;
+  isInViewport: boolean;
+}> {
+  const box = await locator.boundingBox();
+  const isVisible = await locator.isVisible();
+
+  if (!box) {
+    return { x: 0, y: 0, width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0, isVisible: false, isInViewport: false };
+  }
+
+  const viewport = await locator.page().viewportSize();
+  const isInViewport = viewport
+    ? box.x < viewport.width && box.y < viewport.height && box.x + box.width > 0 && box.y + box.height > 0
+    : false;
+
+  return {
+    x: box.x,
+    y: box.y,
+    width: box.width,
+    height: box.height,
+    top: box.y,
+    right: box.x + box.width,
+    bottom: box.y + box.height,
+    left: box.x,
+    isVisible,
+    isInViewport,
+  };
+}
+
+/**
+ * Scroll to a specific pixel position on the page.
+ *
+ * Usage:
+ *   await scrollTo(page, { x: 0, y: 500 });
+ */
+export async function scrollTo(
+  page: Page,
+  position: { x?: number; y?: number },
+  options?: { behavior?: 'smooth' | 'instant' },
+): Promise<void> {
+  await page.evaluate(
+    ({ x, y, behavior }) => window.scrollTo({ left: x ?? window.scrollX, top: y ?? window.scrollY, behavior }),
+    { x: position.x, y: position.y, behavior: options?.behavior ?? 'instant' },
+  );
+}
+
+/**
+ * Scroll an element into view and wait for it to be stable.
+ *
+ * Usage:
+ *   await scrollIntoView(page.locator('#footer'));
+ */
+export async function scrollIntoView(
+  locator: Locator,
+  options?: { block?: 'start' | 'center' | 'end' | 'nearest' },
+): Promise<void> {
+  await locator.evaluate(
+    (el, block) => el.scrollIntoView({ behavior: 'smooth', block }),
+    options?.block ?? 'center',
+  );
+  await locator.page().waitForTimeout(300);
+}
+
+/**
+ * Get the current scroll position of the page.
+ */
+export async function getScrollPosition(page: Page): Promise<{ x: number; y: number }> {
+  return page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
+}
+
+/**
+ * Check if an element is fully visible within the viewport (not clipped).
+ */
+export async function isFullyVisible(locator: Locator): Promise<boolean> {
+  const box = await locator.boundingBox();
+  if (!box) return false;
+
+  const viewport = await locator.page().viewportSize();
+  if (!viewport) return false;
+
+  return (
+    box.x >= 0 &&
+    box.y >= 0 &&
+    box.x + box.width <= viewport.width &&
+    box.y + box.height <= viewport.height
+  );
+}
+
+/**
+ * Simulate a dark mode preference change.
+ *
+ * Usage:
+ *   await setColorScheme(page, 'dark');
+ */
+export async function setColorScheme(
+  page: Page,
+  scheme: 'dark' | 'light' | 'no-preference',
+): Promise<void> {
+  await page.emulateMedia({ colorScheme: scheme });
+}
+
+/**
+ * Simulate a reduced motion preference.
+ * Useful for testing animation-disabled states.
+ */
+export async function setReducedMotion(
+  page: Page,
+  preference: 'reduce' | 'no-preference',
+): Promise<void> {
+  await page.emulateMedia({ reducedMotion: preference });
+}
+
+/**
+ * Simulate a forced colors (high contrast) mode.
+ */
+export async function setForcedColors(
+  page: Page,
+  mode: 'active' | 'none',
+): Promise<void> {
+  await page.emulateMedia({ forcedColors: mode });
+}

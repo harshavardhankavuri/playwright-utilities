@@ -119,8 +119,14 @@ export class VisualRegression {
     comparatorOptions?: ComparatorOptions;
   }) {
     this.snapshotsDir = options?.snapshotsDir || path.resolve('__snapshots__');
-    this.diffDir = options?.diffDir || path.resolve('test-results', 'visual-diffs');
+    this.diffDir = options?.diffDir || path.resolve('__visual-diffs__');
     this.maxBaselines = options?.maxBaselines || 4;
+    
+    // Ensure diff directory exists
+    if (!fs.existsSync(this.diffDir)) {
+      fs.mkdirSync(this.diffDir, { recursive: true });
+    }
+    
     this.comparator = new ScreenshotComparator({
       outputDir: this.diffDir,
       ...options?.comparatorOptions,
