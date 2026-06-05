@@ -425,3 +425,28 @@ export {
   type HSLColor,
   type ContrastResult,
 } from './color-helpers';
+
+// CSS Matcher (validate CSS properties with flexible matching modes)
+export {
+  CSSMatcher,
+  createCSSMatcher,
+  expectCSS,
+  registerCSSMatcher,
+  type CSSValue,
+  type CSSProperties,
+  type CSSMatchOptions,
+  type CSSMatchResult,
+} from './css-matcher';
+
+// Position Matcher (element positioning, layout, spatial relationships)
+export {
+  PositionMatcher,
+  createPositionMatcher,
+  registerPositionMatchers,
+  type ElementBounds,
+  type ViewportInfo,
+  type RelativePosition,
+  type PositionMatchOptions,
+  type PositionMatchResult,
+} from './position-matcher';
+

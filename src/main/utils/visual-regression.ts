@@ -305,6 +305,15 @@ export class VisualRegression {
 
     const passed = matchedIdx >= 0;
     
+    // Clean up diff directory if test passed
+    if (passed && fs.existsSync(diffOutputDir)) {
+      try {
+        fs.rmSync(diffOutputDir, { recursive: true, force: true });
+      } catch (err) {
+        // Ignore cleanup errors
+      }
+    }
+    
     // Save baseline and actual images to diff directory when test fails
     let diffPath: string | undefined = bestResult?.diffImagePath;
     if (!passed && bestBaselineBuffer) {

@@ -575,3 +575,23 @@ function stringify(v: unknown): string {
     return String(v);
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTO-REGISTER CUSTOM MATCHERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Auto-register CSS and Position custom matchers when this module is imported.
+ * These matchers extend Playwright's expect() with:
+ * - toHaveStyle() for CSS property validation
+ * - toBeAbove(), toBeBelow(), etc. for position validation (requires page context)
+ * 
+ * Note: Position matchers require a Page instance, which is handled within the matcher.
+ */
+
+// Import and register CSS matcher (auto-registers on import)
+import './css-matcher';
+
+// Position matcher registration is deferred because it requires Page instance
+// Users can call registerPositionMatchers(page) in their tests or use the class directly
+export { registerPositionMatchers } from './position-matcher';
